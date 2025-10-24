@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node", "jest"],
+    "sourceMap": true,
+    "inlineSources": true,
+    "allowSyntheticDefaultImports": true,
+    "verbatimModuleSyntax": false,
+    "baseUrl": "src",
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@models/*": ["models/*"],
+      "@types/*": ["shared/types/*"],
+      "@services/*": ["services/*"],
+      "@controllers/*": ["controllers/*"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,69 @@
+------- microsoft entra id
+import { createClient } from "redis";
+import {config}  from "./index";
+import { EntraIdCredentialsProviderFactory }
+    from '@redis/entraid';
+
+const provider = EntraIdCredentialsProviderFactory.createForClientCredentials({
+  clientId: config.azureClientId,
+  clientSecret: config.azureClientSecret,
+  authorityConfig: {
+    type: 'multi-tenant',
+    tenantId: config.azureTenantId
+  },
+  tokenManagerConfig: {
+    expirationRefreshRatio: 0.8 // Refresh token after 80% of its lifetime
+  }
+});
+
+
+export const redisClient = createClient({
+  socket: {
+    host: config.redisHost,
+    port: config.redisPort,
+    tls: true
+  },
+  username: "default",
+  credentialsProvider: provider
+});
+
+redisClient.on("error", (err) => console.error("Redis Client Error", err));
+
+export async function connectRedis() {
+  console.log("🔗 Connecting to Redis..." + config.azureClientSecret);
+  if (!redisClient.isOpen) 
+  {
+      await redisClient.connect();
+     console.log("✅ Redis connected successfully");
+  }
+}
+
+
+
+----accesstoken---------
+import { createClient } from "redis";
+import {config}  from "./index";
+    
+export const redisClient = createClient({
+  socket: {
+    host: config.redisHost,
+    port: config.redisPort,
+    tls: true
+  },
+  username: "default", // bắt buộc cho Azure Redis
+  password: config.redisPassword
+});
+
+redisClient.on("error", (err) => console.error("Redis Client Error", err));
+
+export async function connectRedis() {
+  console.log("🔗 Connecting to Redis..." + config.redisPassword);
+  if (!redisClient.isOpen) 
+  {
+      await redisClient.connect();
+     console.log("✅ Redis connected successfully");
+  }
+}
+
+---redis cloud 
+https://cloud.redis.io/#/login
