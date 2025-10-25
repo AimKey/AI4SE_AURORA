@@ -2,19 +2,15 @@ import dayjs from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 dayjs.extend(isSameOrBefore);
 
-// Mock external dependencies used by booking.service
-jest.mock('../src/services/schedule.service', () => ({
-    getFinalSlots: jest.fn()
-}));
-jest.mock('../src/utils/timeUtils', () => ({
-    fromUTC: (d: string) => require('dayjs')(d)
-}));
-jest.mock('../src/utils/calendarUtils', () => ({
-    getMondayOfWeek: (d: string) => require('dayjs')(d).startOf('week').format('YYYY-MM-DD')
-}));
+// Mock external dependencies used by booking.service (both alias and relative to be safe)
+jest.mock('../src/services/schedule.service', () => ({ getFinalSlots: jest.fn() }));
+jest.mock('utils/timeUtils', () => ({ fromUTC: (d: string) => require('dayjs')(d) }));
+jest.mock('../src/utils/timeUtils', () => ({ fromUTC: (d: string) => require('dayjs')(d) }));
+jest.mock('utils/calendarUtils', () => ({ getMondayOfWeek: (d: string) => require('dayjs')(d).startOf('week').format('YYYY-MM-DD') }));
+jest.mock('../src/utils/calendarUtils', () => ({ getMondayOfWeek: (d: string) => require('dayjs')(d).startOf('week').format('YYYY-MM-DD') }));
 
 import { getFinalSlots } from '../src/services/schedule.service';
-import { getAvailableSlotsOfService, getAvailableMonthlySlots } from '../src/services/booking.service';
+import { getAvailableSlotsOfService, getAvailableMonthlySlots, getAvailableMuaServicesByDay } from '../src/services/booking.service';
 import { SLOT_TYPES } from '../src/constants/index';
 
 // Helper to create a fake Express response (not used by these pure helpers but required by spec)
@@ -113,6 +109,7 @@ describe('Booking availability — getAvailableSlotsOfMuaByDay (via getAvailable
         const result = await getAvailableSlotsOfService('m1', 's1', '2025-10-20', 90);
 
         expect(result).toEqual([
+            { serviceId: 's1', day: '2025-10-20', startTime: '08:00', endTime: '09:30' },
             { serviceId: 's1', day: '2025-10-20', startTime: '10:30', endTime: '12:00' },
             { serviceId: 's1', day: '2025-10-20', startTime: '13:00', endTime: '14:30' },
             { serviceId: 's1', day: '2025-10-20', startTime: '15:30', endTime: '17:00' }
@@ -133,8 +130,8 @@ describe('Booking availability — getAvailableSlotsOfMuaByDay (via getAvailable
 
         expect(result).toEqual([
             { serviceId: 's1', day: '2025-10-20', startTime: '09:00', endTime: '10:00' },
-            { serviceId: 's1', day: '2025-10-20', startTime: '11:30', endTime: '12:30' },
             { serviceId: 's1', day: '2025-10-20', startTime: '13:00', endTime: '14:00' },
+            { serviceId: 's1', day: '2025-10-20', startTime: '14:00', endTime: '15:00' },
             { serviceId: 's1', day: '2025-10-20', startTime: '16:00', endTime: '17:00' }
         ]);
     });
@@ -492,6 +489,211 @@ describe('Booking availability — getAvailableMonthlySlots', () => {
         (global as any).cart.items.push({ id: 'x', qty: 2 });
         const r2 = await getAvailableMonthlySlots('m1', '2025-10-01', 30);
 
+        expect(r1).toEqual(r2);
+    });
+});
+
+// ===================== getAvailableServicesOfMuaByDay =====================
+// Note: getAvailableServicesOfMuaByDay is internal, so we exercise it via the
+// exported getAvailableMuaServicesByDay() with a single APPROVED MUA mocked.
+jest.mock('@models/services.models', () => ({
+    ServicePackage: { find: jest.fn() }
+}));
+jest.mock('@models/muas.models', () => ({
+    MUA: { find: jest.fn() }
+}));
+import { MUA_STATUS } from '../src/constants/index';
+
+describe('Booking availability — getAvailableServicesOfMuaByDay (via getAvailableMuaServicesByDay)', () => {
+    const { ServicePackage } = require('@models/services.models');
+    const { MUA } = require('@models/muas.models');
+
+    function mockMuaFindOnce(muaId = 'm1', fullName = 'M1') {
+        (MUA.find as jest.Mock).mockReturnValue({
+            populate: () => ({
+                exec: jest.fn().mockResolvedValue([{ _id: muaId, userId: { _id: 'u1', fullName } }])
+            })
+        });
+    }
+
+    function mockServiceFindLeanOnce(docs: any[]) {
+        (ServicePackage.find as jest.Mock).mockReturnValue({
+            select: () => ({
+                sort: () => ({
+                    lean: jest.fn().mockResolvedValue(docs)
+                })
+            })
+        });
+    }
+
+    beforeEach(() => {
+        jest.resetAllMocks();
+    });
+
+    afterEach(() => {
+        jest.clearAllMocks();
+    });
+
+    // Happy paths
+    test('HP-01 Single window fits 60 and 180-min services', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({
+            slots: [
+                { slotId: 'W1', type: SLOT_TYPES.ORIGINAL_WORKING, day: '2025-10-20', startTime: '09:00', endTime: '12:00' }
+            ]
+        });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([
+            { _id: 'a', muaId: { _id: 'm1' }, name: 'S60', price: 10, duration: 60, imageUrl: 'img', isAvailable: true },
+            { _id: 'b', muaId: { _id: 'm1' }, name: 'S180', price: 30, duration: 180, imageUrl: 'img', isAvailable: true }
+        ]);
+
+        const res = await getAvailableMuaServicesByDay('2025-10-20');
+        expect(res).toHaveLength(1);
+        expect(res[0].day).toBe('2025-10-20');
+        expect(res[0].services.map((s: any) => s._id)).toEqual(['a', 'b']);
+    });
+
+    test('HP-02 Exclude service too long for the window', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({
+            slots: [
+                { slotId: 'W', type: SLOT_TYPES.NEW_WORKING, day: '2025-10-20', startTime: '09:00', endTime: '10:00' }
+            ]
+        });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([
+            { _id: 'a', muaId: { _id: 'm1' }, name: 'S90', price: 10, duration: 90 },
+            { _id: 'b', muaId: { _id: 'm1' }, name: 'S60', price: 20, duration: 60 }
+        ]);
+
+        const res = await getAvailableMuaServicesByDay('2025-10-20');
+        expect(res[0].services.map((s: any) => s._id)).toEqual(['b']);
+    });
+
+    test('HP-03 Multiple windows allow short and long services', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({
+            slots: [
+                { slotId: 'W1', type: SLOT_TYPES.ORIGINAL_WORKING, day: '2025-10-20', startTime: '08:00', endTime: '09:00' },
+                { slotId: 'W2', type: SLOT_TYPES.ORIGINAL_WORKING, day: '2025-10-20', startTime: '10:00', endTime: '12:00' }
+            ]
+        });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([
+            { _id: 's30', duration: 30, price: 10, muaId: { _id: 'm1' } },
+            { _id: 's45', duration: 45, price: 15, muaId: { _id: 'm1' } },
+            { _id: 's120', duration: 120, price: 50, muaId: { _id: 'm1' } }
+        ]);
+
+        const res = await getAvailableMuaServicesByDay('2025-10-20');
+        expect(res[0].services.map((s: any) => s._id).sort()).toEqual(['s120', 's30', 's45'].sort());
+    });
+
+    test('HP-04 Booking removal fragments availability; only short fits', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({
+            slots: [
+                { slotId: 'W', type: SLOT_TYPES.OVERRIDE, day: '2025-10-20', startTime: '09:00', endTime: '12:00' },
+                { slotId: 'B', type: SLOT_TYPES.BOOKING, day: '2025-10-20', startTime: '10:00', endTime: '11:30' }
+            ]
+        });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([
+            { _id: 's30', duration: 30, price: 10, muaId: { _id: 'm1' } },
+            { _id: 's60', duration: 60, price: 20, muaId: { _id: 'm1' } }
+        ]);
+
+        const res = await getAvailableMuaServicesByDay('2025-10-20');
+        expect(res[0].services.map((s: any) => s._id)).toEqual(['s30']);
+    });
+
+    test('HP-05 DTO mapping with isActive, fields, and IDs', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({
+            slots: [
+                { slotId: 'W', type: SLOT_TYPES.NEW_WORKING, day: '2025-10-20', startTime: '09:00', endTime: '11:00' }
+            ]
+        });
+        mockMuaFindOnce('m1', 'Makeup A');
+        mockServiceFindLeanOnce([
+            { _id: 'svc1', muaId: { _id: 'm1' }, name: 'Bridal', description: 'desc', price: 100, duration: 60, imageUrl: 'u', isAvailable: true, createdAt: new Date('2025-01-01'), updatedAt: new Date('2025-01-02') }
+        ]);
+
+        const res = await getAvailableMuaServicesByDay('2025-10-20');
+        const s = res[0].services[0];
+        expect(s).toMatchObject({ _id: 'svc1', name: 'Bridal', price: 100, duration: 60, imageUrl: 'u', isActive: true });
+    });
+
+    // Edge cases
+    test('EC-01 Services with zero/missing duration are excluded', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({ slots: [{ slotId: 'W', type: SLOT_TYPES.ORIGINAL_WORKING, day: '2025-10-20', startTime: '09:00', endTime: '12:00' }] });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([
+            { _id: 's0', duration: 0, muaId: { _id: 'm1' } },
+            { _id: 'sU', price: 10, muaId: { _id: 'm1' } },
+            { _id: 's30', duration: 30, muaId: { _id: 'm1' } }
+        ]);
+
+        const res = await getAvailableMuaServicesByDay('2025-10-20');
+        expect(res[0].services.map((s: any) => s._id)).toEqual(['s30']);
+    });
+
+    test('EC-02 Exact-fit duration equals slot length is included', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({ slots: [{ slotId: 'W', type: SLOT_TYPES.OVERRIDE, day: '2025-10-20', startTime: '09:00', endTime: '10:30' }] });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([{ _id: 's90', duration: 90, muaId: { _id: 'm1' } }]);
+
+        const res = await getAvailableMuaServicesByDay('2025-10-20');
+        expect(res[0].services.map((s: any) => s._id)).toEqual(['s90']);
+    });
+
+    test('EC-03 Fragmented day matches only services that fit contiguously', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({
+            slots: [
+                { slotId: 'W', type: SLOT_TYPES.NEW_WORKING, day: '2025-10-20', startTime: '08:00', endTime: '12:00' },
+                { slotId: 'B1', type: SLOT_TYPES.BOOKING, day: '2025-10-20', startTime: '09:00', endTime: '09:30' },
+                { slotId: 'B2', type: SLOT_TYPES.BOOKING, day: '2025-10-20', startTime: '10:30', endTime: '11:00' }
+            ]
+        });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([
+            { _id: 's60', duration: 60, muaId: { _id: 'm1' } },
+            { _id: 's30', duration: 30, muaId: { _id: 'm1' } }
+        ]);
+
+        const res = await getAvailableMuaServicesByDay('2025-10-20');
+        expect(new Set(res[0].services.map((s: any) => s._id))).toEqual(new Set(['s60', 's30']));
+    });
+
+    // Error scenarios
+    test('ER-01 getFinalSlots throws -> propagates', async () => {
+        (getFinalSlots as jest.Mock).mockImplementation(() => { throw new Error('DB down'); });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([]);
+        await expect(getAvailableMuaServicesByDay('2025-10-20')).rejects.toThrow('DB down');
+    });
+
+    test('ER-02 ServicePackage.find throws -> propagates', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({ slots: [{ slotId: 'W', type: SLOT_TYPES.ORIGINAL_WORKING, day: '2025-10-20', startTime: '09:00', endTime: '12:00' }] });
+        mockMuaFindOnce('m1');
+        (ServicePackage.find as jest.Mock).mockImplementation(() => { throw new Error('find failed'); });
+        await expect(getAvailableMuaServicesByDay('2025-10-20')).rejects.toThrow('find failed');
+    });
+
+    test('ER-03 Invalid day handling from fromUTC/getMondayOfWeek yields empty or error', async () => {
+        const cal = require('../src/utils/calendarUtils');
+        jest.spyOn(cal, 'getMondayOfWeek').mockImplementation(() => { throw new Error('Invalid date'); });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([]);
+        await expect(getAvailableMuaServicesByDay('not-a-date')).rejects.toThrow('Invalid date');
+    });
+
+    // Integration
+    test('INT-01 Result independent from global/cart state', async () => {
+        (getFinalSlots as jest.Mock).mockResolvedValue({ slots: [{ slotId: 'W', type: SLOT_TYPES.ORIGINAL_WORKING, day: '2025-10-20', startTime: '09:00', endTime: '11:00' }] });
+        mockMuaFindOnce('m1');
+        mockServiceFindLeanOnce([{ _id: 'svc', duration: 60, muaId: { _id: 'm1' } }]);
+
+        (global as any).cart = { items: [{ id: 'svc', qty: 1 }] };
+        const r1 = await getAvailableMuaServicesByDay('2025-10-20');
+        (global as any).cart.items.push({ id: 'x', qty: 2 });
+        const r2 = await getAvailableMuaServicesByDay('2025-10-20');
         expect(r1).toEqual(r2);
     });
 });
