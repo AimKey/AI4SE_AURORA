@@ -13,6 +13,7 @@ import mongoose from "mongoose";
 import { redisClient } from "config/redis";
 import { generateOrderCode } from "./transaction.service";
 import { invalidateWeeklyCache } from "./slot.service";
+import { formatBookingResponse } from '../utils/booking.formatter';
 import { BOOKING_STATUS as BOOKING_STATUS_CONST } from "constants/booking";
 import { hasBookingEnded } from "constants/booking";
 
@@ -781,38 +782,8 @@ export async function deleteBooking(bookingId: string): Promise<boolean> {
     }
 }
 
-// UTILITY - Format booking response
-export function formatBookingResponse(booking: any): BookingResponseDTO {
-    const rawDate = booking.bookingDate;
-    const bookingDay = rawDate ? fromUTC(rawDate) : dayjs();
-    const durationVal: number = typeof booking.duration === 'number' ? booking.duration : 0;
-    const customer = booking.customerId || {};
-    const service = booking.serviceId || {};
-    const mua = booking.muaId || {};
-
-    return {
-        _id: booking._id ? String(booking._id) : '',
-        customerId: customer._id ? String(customer._id) : '',
-        artistId: mua._id ? String(mua._id) : '',
-        serviceId: service._id ? String(service._id) : '',
-        customerName: customer.fullName || "",
-        customerPhone: booking.customerPhone || "",
-        serviceName: service.name || "",
-        servicePrice: service.price || 0,
-        bookingDate: bookingDay.format("YYYY-MM-DD"),
-        startTime: bookingDay.format("HH:mm"),
-        endTime: bookingDay.add(durationVal, 'minute').format("HH:mm"),
-        duration: durationVal,
-        locationType: booking.locationType || BOOKING_TYPES.STUDIO,
-        address: booking.address || '',
-        status: booking.status || BOOKING_STATUS.PENDING,
-        transportFee: booking.transportFee,
-        totalPrice: booking.totalPrice || 0,
-        note: booking.note,
-        createdAt: booking.createdAt || new Date(),
-        updatedAt: booking.updatedAt || booking.createdAt || new Date()
-    };
-}
+// UTILITY - Format booking response is implemented in `booking.formatter` and
+// imported above so tests can mock it independently.
 
 // ==================== MARK COMPLETED ====================
 export async function markBookingCompleted(bookingId: string, muaIdFromReq: string) {
