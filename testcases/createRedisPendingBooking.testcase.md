@@ -1,274 +1,195 @@
-# createRedisPendingBooking() — Test cases
+# Test Cases for `createRedisPendingBooking` Function
 
-This file documents unit test cases for:
+## Function Overview
+- **Function Name**: `createRedisPendingBooking`
+- **Purpose**: Tạo booking tạm thời trong Redis với TTL 30 phút (1800s) để chờ thanh toán
+- **Input**: `bookingData: CreateBookingDTO`
+- **Output**: `Promise<null | PendingBookingResponseDTO>`
+- **Key Operations**:
+  - Kiểm tra conflict với bookings hiện có (checkBookingConflict)
+  - Tạo Booking object với status PENDING
+  - Sinh orderCode duy nhất
+  - Lưu vào Redis JSON với TTL 1800s
+  - Format response với customerPhone và orderCode
 
-```ts
-export async function createRedisPendingBooking(
-    bookingData: CreateBookingDTO
-): Promise<null | PendingBookingResponseDTO>
-```
+---
 
-Behavior summary (from implementation):
-- Checks for booking conflicts using `checkBookingConflict(muaId, bookingDate, duration)`
-- If conflict exists, throws `Error('Booking conflict detected...')`
-- Creates new Booking instance with `status: BOOKING_STATUS.PENDING`
-- Generates unique `orderCode` using `generateOrderCode()`
-- Formats booking using `formatBookingResponse()`
-- Creates `PendingBookingResponseDTO` with formatted data + `customerPhone` + `orderCode`
-- Stores in Redis with key `booking:pending:${orderCode}` with 1800s (30min) expiry
-- Returns `PendingBookingResponseDTO`
-- On unexpected errors throws `Error('Failed to create booking: ...')`
+## Test Case Categories
 
-----
+### **HAPPY PATH (5 test cases)**
 
-## Happy path scenarios (5 tests)
-
-### HP-1: Successfully create pending booking with valid data
-- **Purpose**: Verify normal pending booking creation flow
-- **Mocks**: 
-  - `checkBookingConflict` → `{ hasConflict: false }`
-  - `generateOrderCode` → `12345678`
-  - `redisClient.json.set` → resolves successfully
-  - `redisClient.expire` → resolves successfully
-- **Input**: Valid `CreateBookingDTO` with all required fields
-- **Expected**: 
-  - Returns `PendingBookingResponseDTO` with `orderCode: 12345678`
-  - Redis key set to `booking:pending:12345678`
-  - Expiry set to 1800 seconds
-  - Response includes `customerPhone` field
-
-### HP-2: Create pending booking with minimum required fields
-- **Purpose**: Verify function handles minimal data
-- **Mocks**: 
-  - `checkBookingConflict` → `{ hasConflict: false }`
-  - `generateOrderCode` → `87654321`
-  - Redis mocks → resolve successfully
-- **Input**: `CreateBookingDTO` with only required fields (no optional fields)
-- **Expected**: 
-  - Returns valid `PendingBookingResponseDTO`
-  - Optional fields defaulted appropriately
-  - Redis operations succeed
-
-### HP-3: Create multiple pending bookings (different order codes)
-- **Purpose**: Verify unique order code generation for multiple bookings
-- **Mocks**: 
-  - `generateOrderCode` → returns different codes: `11111111`, `22222222`
-  - Redis mocks → resolve successfully for both
-- **Input**: Two separate `CreateBookingDTO` objects
-- **Expected**: 
-  - First booking gets `orderCode: 11111111`
-  - Second booking gets `orderCode: 22222222`
-  - Both stored in Redis with different keys
-
-### HP-4: Create pending booking with future date
-- **Purpose**: Verify handling of future booking dates
-- **Mocks**: 
-  - `checkBookingConflict` → `{ hasConflict: false }`
-  - `generateOrderCode` → `99999999`
-  - Redis mocks → resolve
-- **Input**: `bookingDate: new Date('2025-12-31T10:00:00')`
-- **Expected**: 
-  - Returns `PendingBookingResponseDTO` with future date
-  - No conflict detected
-  - Redis stores successfully
-
-### HP-5: Create pending booking with long duration (240 minutes)
-- **Purpose**: Verify handling of long service durations
-- **Mocks**: 
-  - `checkBookingConflict` with `duration: 240` → `{ hasConflict: false }`
-  - `generateOrderCode` → `55555555`
-  - Redis mocks → resolve
-- **Input**: `duration: 240`
-- **Expected**: 
-  - Returns `PendingBookingResponseDTO` with `duration: 240`
-  - Conflict check passes with 240-minute duration
-
-----
-
-## Edge cases (3 tests)
-
-### EDGE-1: Booking at exact start of day (00:00)
-- **Purpose**: Test boundary time value
-- **Mocks**: 
-  - `checkBookingConflict` → `{ hasConflict: false }`
-  - `generateOrderCode` → `10000001`
-  - Redis mocks → resolve
-- **Input**: `bookingDate: new Date('2025-02-01T00:00:00')`
-- **Expected**: 
-  - Function handles midnight booking time
-  - Returns valid `PendingBookingResponseDTO`
-
-### EDGE-2: Very short duration (15 minutes)
-- **Purpose**: Test minimum duration boundary
-- **Mocks**: 
-  - `checkBookingConflict` with `duration: 15` → `{ hasConflict: false }`
-  - `generateOrderCode` → `10000002`
-  - Redis mocks → resolve
-- **Input**: `duration: 15`
-- **Expected**: 
-  - Returns `PendingBookingResponseDTO` with short duration
-  - Conflict check handles 15-minute window
-
-### EDGE-3: Maximum order code value
-- **Purpose**: Test edge of order code range
-- **Mocks**: 
-  - `generateOrderCode` → `99999999` (max 8-digit number)
-  - `checkBookingConflict` → `{ hasConflict: false }`
-  - Redis mocks → resolve
-- **Input**: Valid booking data
-- **Expected**: 
-  - Redis key uses max order code correctly
-  - Function completes successfully
-
-----
-
-## Error scenarios (3 tests)
-
-### ERR-1: Booking conflict detected (time slot already booked)
-- **Purpose**: Verify error handling when slot is unavailable
-- **Mocks**: 
-  - `checkBookingConflict` → `{ hasConflict: true, conflictingBooking: { startTime: '10:00', endTime: '12:00', date: '2025-02-01' } }`
-- **Input**: Valid `CreateBookingDTO` with conflicting time
-- **Expected**: 
-  - Function throws error with message containing conflict details
-  - Error includes: "Booking conflict detected. There is already a booking from 10:00 to 12:00"
-  - Redis operations NOT called
-
-### ERR-2: Redis json.set fails
-- **Purpose**: Verify error handling when Redis storage fails
-- **Mocks**: 
-  - `checkBookingConflict` → `{ hasConflict: false }`
-  - `generateOrderCode` → `12340000`
-  - `redisClient.json.set` → rejects with `Error('Redis connection lost')`
-- **Input**: Valid booking data
-- **Expected**: 
-  - Function throws `Error('Failed to create booking: Error: Redis connection lost')`
-
-### ERR-3: Redis expire fails
-- **Purpose**: Verify error handling when setting expiry fails
-- **Mocks**: 
-  - `checkBookingConflict` → `{ hasConflict: false }`
-  - `generateOrderCode` → `12340001`
-  - `redisClient.json.set` → resolves successfully
-  - `redisClient.expire` → rejects with `Error('Expire command failed')`
-- **Input**: Valid booking data
-- **Expected**: 
-  - Function throws error containing "Failed to create booking"
-
-----
-
-## Integration with state (1 test)
-
-### INT-1: Full realistic booking creation with Redis integration
-- **Purpose**: Simulate complete pending booking creation flow
-- **Mocks**: 
-  - `checkBookingConflict` called with specific params → `{ hasConflict: false }`
-  - `generateOrderCode` → `45678901`
-  - `redisClient.json.set` → verify called with correct structure
-  - `redisClient.expire` → verify called with 1800
-- **Input**: 
-  ```ts
+#### **HP-1: Successfully create pending booking with valid data**
+- **Description**: Tạo pending booking thành công với đầy đủ thông tin hợp lệ
+- **Input**:
+  ```typescript
   {
-    customerId: 'cust_realistic_123',
-    muaId: 'mua_realistic_456',
-    serviceId: 'svc_realistic_789',
-    bookingDate: new Date('2025-02-15T14:30:00'),
-    duration: 90,
-    totalPrice: 500,
-    customerPhone: '+84901234567',
-    notes: 'Please arrive 10 minutes early'
+    customerId: new ObjectId(),
+    muaId: new ObjectId(),
+    serviceId: new ObjectId(),
+    bookingDate: new Date('2025-11-01T09:00:00Z'),
+    duration: 120,
+    customerPhone: '0912345678',
+    location: '123 Test Street',
+    totalPrice: 500000
   }
   ```
-- **Expected**: 
-  - `checkBookingConflict` called with `('mua_realistic_456', bookingDate, 90)`
-  - Booking created with `status: 'PENDING'`
-  - Returns complete `PendingBookingResponseDTO`:
-    ```ts
-    {
-      _id: expect.any(String),
-      customerName: expect.any(String),
-      serviceName: expect.any(String),
-      status: 'PENDING',
-      bookingDate: '2025-02-15T14:30:00',
-      duration: 90,
-      totalPrice: 500,
-      customerPhone: '+84901234567',
-      orderCode: 45678901,
-      notes: 'Please arrive 10 minutes early'
-    }
-    ```
-  - Redis key set to `booking:pending:45678901`
-  - Redis data is JSON stringified properly
-  - Expiry set to exactly 1800 seconds
-  - All fields preserved through formatting
+- **Expected Output**: 
+  - PendingBookingResponseDTO với status "pending"
+  - orderCode được sinh ra
+  - customerPhone được include
+- **Mocks**:
+  - `checkBookingConflict` returns `{ hasConflict: false }`
+  - `generateOrderCode` returns `12345`
+  - `redisClient.json.set` resolves successfully
+  - `redisClient.expire` resolves successfully
 
-----
-
-## Notes for test authors
-
-**Key differences from other functions:**
-- Does NOT save to MongoDB database
-- Stores in Redis with temporary expiry (30 minutes)
-- Includes `orderCode` generation
-- Includes `customerPhone` in response (not in regular booking)
-- Still checks for conflicts before creating
-- Creates Booking instance but doesn't `.save()` it
-
-**Mocking Redis:**
-```ts
-import { redisClient } from '../src/config/redis';
-
-jest.mock('../src/config/redis', () => ({
-  redisClient: {
-    json: {
-      set: jest.fn().mockResolvedValue('OK')
-    },
-    expire: jest.fn().mockResolvedValue(1)
+#### **HP-2: Create pending booking with minimum required fields**
+- **Description**: Tạo booking chỉ với các trường bắt buộc
+- **Input**:
+  ```typescript
+  {
+    customerId: new ObjectId(),
+    muaId: new ObjectId(),
+    serviceId: new ObjectId(),
+    bookingDate: new Date(),
+    duration: 60,
+    customerPhone: '0987654321'
   }
-}));
-```
+  ```
+- **Expected Output**: PendingBookingResponseDTO với các giá trị mặc định cho optional fields
+- **Mocks**: Same as HP-1
 
-**Mocking other dependencies:**
-```ts
-// Mock checkBookingConflict (internal function, mock via module)
-jest.spyOn(bookingService as any, 'checkBookingConflict')
-  .mockResolvedValue({ hasConflict: false });
+#### **HP-3: Create pending booking with early morning time slot**
+- **Description**: Tạo booking vào khung giờ sáng sớm (6:00 AM)
+- **Input**: bookingDate = `new Date('2025-11-01T06:00:00Z')`
+- **Expected Output**: Pending booking được tạo thành công
+- **Mocks**: checkBookingConflict returns no conflict
 
-// Mock generateOrderCode (from transaction.service)
-jest.mock('../src/services/transaction.service', () => ({
-  generateOrderCode: jest.fn(() => 12345678)
-}));
-```
+#### **HP-4: Create pending booking with late evening time slot**
+- **Description**: Tạo booking vào khung giờ tối muộn (22:00 PM)
+- **Input**: bookingDate = `new Date('2025-11-01T22:00:00Z')`
+- **Expected Output**: Pending booking được tạo thành công
+- **Mocks**: checkBookingConflict returns no conflict
 
-**Assertions to verify:**
-- Conflict check called with correct params
-- Order code generated
-- Redis set called with correct key format
-- Redis data structure matches expected
-- Expiry set to 1800 seconds
-- Returned DTO includes orderCode and customerPhone
+#### **HP-5: Verify Redis TTL is set correctly (1800 seconds)**
+- **Description**: Xác nhận Redis key có TTL đúng 30 phút
+- **Input**: Valid bookingData
+- **Expected Output**: 
+  - redisClient.expire được gọi với TTL = 1800
+  - Cache key format: `booking:pending:${orderCode}`
+- **Mocks**: Verify redisClient.expire called with correct arguments
 
-**Error testing:**
-```ts
-await expect(createRedisPendingBooking(data))
-  .rejects.toThrow('Failed to create booking:');
-```
+---
 
-----
+### **EDGE CASES (3 test cases)**
 
-## Implementation checklist
+#### **EDGE-1: Create booking with booking date at exact midnight**
+- **Description**: bookingDate chính xác vào 00:00:00
+- **Input**: bookingDate = `new Date('2025-11-01T00:00:00Z')`
+- **Expected Output**: Booking được tạo thành công, xử lý đúng boundary case
+- **Mocks**: checkBookingConflict handles midnight correctly
 
-- [ ] HP-1: Valid booking creation
-- [ ] HP-2: Minimum required fields
-- [ ] HP-3: Multiple bookings (unique codes)
-- [ ] HP-4: Future date booking
-- [ ] HP-5: Long duration (240 min)
-- [ ] EDGE-1: Midnight booking time
-- [ ] EDGE-2: Short duration (15 min)
-- [ ] EDGE-3: Max order code value
-- [ ] ERR-1: Booking conflict
-- [ ] ERR-2: Redis set fails
-- [ ] ERR-3: Redis expire fails
-- [ ] INT-1: Full realistic flow
+#### **EDGE-2: Create booking with very long duration (480 minutes)**
+- **Description**: Duration = 8 giờ (max practical duration)
+- **Input**: duration = 480
+- **Expected Output**: Pending booking created với duration 480 minutes
+- **Mocks**: checkBookingConflict validates long duration without conflicts
 
-Total: 12 test cases
+#### **EDGE-3: Create booking with special characters in location**
+- **Description**: Location chứa ký tự đặc biệt và unicode
+- **Input**: location = `"123 Đường Nguyễn Văn Linh, Quận 7, TP.HCM (近くのカフェ)"`
+- **Expected Output**: 
+  - Location được lưu chính xác trong Redis
+  - JSON serialization/deserialization không bị lỗi
+- **Mocks**: Verify Redis JSON.set preserves special characters
+
+---
+
+### **ERROR SCENARIOS (3 test cases)**
+
+#### **ERR-1: Booking conflict detected - overlapping time**
+- **Description**: Có booking khác đã tồn tại trong khoảng thời gian bị trùng
+- **Input**: Valid bookingData nhưng có conflict
+- **Expected Error**: 
+  - Error message: "Booking conflict detected. There is already a booking from 09:00 to 11:00 on 2025-11-01"
+  - Error thrown from checkBookingConflict
+- **Mocks**: 
+  ```typescript
+  checkBookingConflict.mockResolvedValue({
+    hasConflict: true,
+    conflictingBooking: {
+      startTime: '09:00',
+      endTime: '11:00',
+      date: '2025-11-01'
+    }
+  })
+  ```
+
+#### **ERR-2: Redis connection failure when saving**
+- **Description**: Redis không thể lưu dữ liệu (network error)
+- **Input**: Valid bookingData
+- **Expected Error**: 
+  - Error message starts with "Failed to create booking:"
+  - Wraps underlying Redis error
+- **Mocks**: 
+  ```typescript
+  redisClient.json.set.mockRejectedValue(new Error('Redis connection lost'))
+  ```
+
+#### **ERR-3: Redis expire operation fails**
+- **Description**: Set data thành công nhưng expire fails
+- **Input**: Valid bookingData
+- **Expected Error**: 
+  - Error message: "Failed to create booking:"
+  - Function should propagate expire error
+- **Mocks**:
+  ```typescript
+  redisClient.json.set.mockResolvedValue('OK')
+  redisClient.expire.mockRejectedValue(new Error('Expire command failed'))
+  ```
+
+---
+
+### **INTEGRATION TEST (1 test case)**
+
+#### **INT-1: Full workflow - conflict check → orderCode generation → Redis storage**
+- **Description**: Test toàn bộ flow từ đầu đến cuối với real dependencies
+- **Input**: Complete valid booking data
+- **Expected Workflow**:
+  1. checkBookingConflict được gọi với đúng params (muaId, bookingDate, duration)
+  2. generateOrderCode được gọi 1 lần
+  3. Booking object được tạo với status = PENDING
+  4. formatBookingResponse được gọi
+  5. redisClient.json.set được gọi với key `booking:pending:${orderCode}`
+  6. redisClient.expire được gọi với TTL 1800
+  7. Return object chứa đầy đủ: booking data + customerPhone + orderCode
+- **Mocks**: Mock all dependencies, verify call order and arguments
+- **Assertions**:
+  - Verify all functions called in correct order
+  - Verify Redis key format
+  - Verify JSON serialization (JSON.parse(JSON.stringify()))
+  - Verify returned object structure matches PendingBookingResponseDTO
+
+---
+
+## Total: 12 Test Cases
+- **Happy Path**: 5
+- **Edge Cases**: 3  
+- **Error Scenarios**: 3
+- **Integration**: 1
+
+## Dependencies to Mock
+- `checkBookingConflict` - Internal helper function
+- `generateOrderCode` - From transaction.service
+- `formatBookingResponse` - From booking.formatter utility
+- `redisClient.json.set` - Redis JSON module
+- `redisClient.expire` - Redis expire command
+- `Booking` - Mongoose model constructor
+
+## Key Testing Focus
+1. **Conflict Detection**: Ensure checkBookingConflict prevents double bookings
+2. **Redis Operations**: Verify correct JSON storage and TTL setting
+3. **OrderCode Generation**: Unique identifier for payment tracking
+4. **Data Serialization**: JSON.parse(JSON.stringify()) for Redis compatibility
+5. **Error Propagation**: Proper error wrapping with context
+6. **TTL Accuracy**: 1800 seconds (30 minutes) for payment window

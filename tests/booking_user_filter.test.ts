@@ -3,6 +3,24 @@
 
 import * as bookingService from '../src/services/booking.service';
 import { Booking } from '../src/models/bookings.models';
+import { redisClient } from '../src/config/redis';
+import { generateOrderCode } from '../src/services/transaction.service';
+import { formatBookingResponse } from '../src/utils/booking.formatter';
+import { Types } from 'mongoose';
+
+// Mock dependencies
+jest.mock('../src/config/redis', () => ({
+  redisClient: {
+    json: {
+      set: jest.fn(),
+      get: jest.fn(),
+    },
+    expire: jest.fn(),
+    del: jest.fn(),
+  }
+}));
+jest.mock('../src/services/transaction.service');
+jest.mock('../src/utils/booking.formatter');
 
 // ==================== TEST SUITE: getAllBookings (Service Layer) ====================
 describe('getAllBookings (Service)', () => {
@@ -293,6 +311,27 @@ describe('getAllBookings (Service)', () => {
       }
     ];
 
+    const mockFormattedBookings = [
+      {
+        _id: 'booking1',
+        customerName: 'Alice Johnson',
+        serviceName: 'Bridal Makeup',
+        status: 'COMPLETED',
+        bookingDate: '2025-01-15T10:00:00',
+        duration: 120,
+        totalPrice: 500
+      },
+      {
+        _id: 'booking2',
+        customerName: 'Bob Smith',
+        serviceName: 'Hair Styling',
+        status: 'COMPLETED',
+        bookingDate: '2025-01-16T14:00:00',
+        duration: 90,
+        totalPrice: 300
+      }
+    ];
+
     const mockExec = jest.fn().mockResolvedValue(mockBookings);
     const mockSort = jest.fn().mockReturnValue({ exec: mockExec });
     const mockLimit = jest.fn().mockReturnValue({ sort: mockSort });
@@ -302,6 +341,11 @@ describe('getAllBookings (Service)', () => {
 
     jest.spyOn(Booking, 'find').mockImplementation(mockFind);
     jest.spyOn(Booking, 'countDocuments').mockResolvedValue(15);
+    
+    // Mock formatBookingResponse
+    (formatBookingResponse as jest.Mock)
+      .mockReturnValueOnce(mockFormattedBookings[0])
+      .mockReturnValueOnce(mockFormattedBookings[1]);
 
     const result = await bookingService.getAllBookings(1, 3, 'COMPLETED');
 
@@ -642,6 +686,36 @@ describe('getBookingsByCustomer (Service)', () => {
       }
     ];
 
+    const mockFormattedBookings = [
+      {
+        _id: 'b3',
+        customerName: 'Emma Watson',
+        serviceName: 'Bridal Makeup',
+        status: 'CONFIRMED',
+        bookingDate: '2025-01-20T10:00:00',
+        duration: 120,
+        totalPrice: 600
+      },
+      {
+        _id: 'b2',
+        customerName: 'Emma Watson',
+        serviceName: 'Hair Styling',
+        status: 'COMPLETED',
+        bookingDate: '2025-01-15T14:00:00',
+        duration: 90,
+        totalPrice: 300
+      },
+      {
+        _id: 'b1',
+        customerName: 'Emma Watson',
+        serviceName: 'Nail Art',
+        status: 'CANCELLED',
+        bookingDate: '2025-01-10T11:00:00',
+        duration: 60,
+        totalPrice: 100
+      }
+    ];
+
     const mockExec = jest.fn().mockResolvedValue(mockBookings);
     const mockSort = jest.fn().mockReturnValue({ exec: mockExec });
     const mockLimit = jest.fn().mockReturnValue({ sort: mockSort });
@@ -651,6 +725,12 @@ describe('getBookingsByCustomer (Service)', () => {
 
     jest.spyOn(Booking, 'find').mockImplementation(mockFind);
     jest.spyOn(Booking, 'countDocuments').mockResolvedValue(8);
+    
+    // Mock formatBookingResponse
+    (formatBookingResponse as jest.Mock)
+      .mockReturnValueOnce(mockFormattedBookings[0])
+      .mockReturnValueOnce(mockFormattedBookings[1])
+      .mockReturnValueOnce(mockFormattedBookings[2]);
 
     const result = await bookingService.getBookingsByCustomer('real_customer_123', 1, 3);
 
@@ -1015,6 +1095,45 @@ describe('getBookingsByMUA (Service)', () => {
       }
     ];
 
+    const mockFormattedBookings = [
+      {
+        _id: 'b4',
+        customerName: 'Alice Johnson',
+        serviceName: 'Bridal Makeup',
+        status: 'CONFIRMED',
+        bookingDate: '2025-02-01T10:00:00',
+        duration: 120,
+        totalPrice: 600
+      },
+      {
+        _id: 'b3',
+        customerName: 'Bob Smith',
+        serviceName: 'Hair Styling',
+        status: 'PENDING',
+        bookingDate: '2025-01-25T14:00:00',
+        duration: 90,
+        totalPrice: 300
+      },
+      {
+        _id: 'b2',
+        customerName: 'Charlie Brown',
+        serviceName: 'Evening Makeup',
+        status: 'COMPLETED',
+        bookingDate: '2025-01-20T16:00:00',
+        duration: 60,
+        totalPrice: 400
+      },
+      {
+        _id: 'b1',
+        customerName: 'Diana Prince',
+        serviceName: 'Party Makeup',
+        status: 'CANCELLED',
+        bookingDate: '2025-01-10T11:00:00',
+        duration: 45,
+        totalPrice: 200
+      }
+    ];
+
     const mockExec = jest.fn().mockResolvedValue(mockBookings);
     const mockSort = jest.fn().mockReturnValue({ exec: mockExec });
     const mockLimit = jest.fn().mockReturnValue({ sort: mockSort });
@@ -1024,6 +1143,13 @@ describe('getBookingsByMUA (Service)', () => {
 
     jest.spyOn(Booking, 'find').mockImplementation(mockFind);
     jest.spyOn(Booking, 'countDocuments').mockResolvedValue(18);
+    
+    // Mock formatBookingResponse
+    (formatBookingResponse as jest.Mock)
+      .mockReturnValueOnce(mockFormattedBookings[0])
+      .mockReturnValueOnce(mockFormattedBookings[1])
+      .mockReturnValueOnce(mockFormattedBookings[2])
+      .mockReturnValueOnce(mockFormattedBookings[3]);
 
     const result = await bookingService.getBookingsByMUA('mua_artist_456', 1, 5);
 
@@ -1064,6 +1190,528 @@ describe('getBookingsByMUA (Service)', () => {
     expect(statuses).toContain('PENDING');
     expect(statuses).toContain('COMPLETED');
     expect(statuses).toContain('CANCELLED');
+  });
+});
+
+// ==================== TEST SUITE: createRedisPendingBooking (Service Layer) ====================
+describe('createRedisPendingBooking (Service)', () => {
+  // Helper function to mock no conflict scenario
+  const mockNoConflict = () => {
+    const mockExec = jest.fn().mockResolvedValue([]); // Empty array = no conflicts
+    const mockFind = jest.fn().mockReturnValue({ exec: mockExec });
+    jest.spyOn(Booking, 'find').mockImplementation(mockFind);
+    return mockFind;
+  };
+
+  // Helper function to mock conflict scenario
+  const mockWithConflict = (conflictingBooking: any) => {
+    const mockExec = jest.fn().mockResolvedValue([conflictingBooking]);
+    const mockFind = jest.fn().mockReturnValue({ exec: mockExec });
+    jest.spyOn(Booking, 'find').mockImplementation(mockFind);
+    return mockFind;
+  };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+  });
+
+  // ========== HAPPY PATH SCENARIOS (5 tests) ==========
+
+  test('HP-1: Successfully create pending booking with valid data', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-01T09:00:00Z'),
+      duration: 120,
+      customerPhone: '0912345678',
+      locationType: 'HOME' as any,
+      address: '123 Test Street',
+      totalPrice: 500000
+    };
+
+    const mockOrderCode = 12345;
+    const mockFormattedBooking = {
+      _id: 'mock-id',
+      customerName: 'Test Customer',
+      serviceName: 'Test Service',
+      muaName: 'Test MUA',
+      status: 'PENDING',
+      bookingDate: mockBookingData.bookingDate,
+      duration: 120,
+      totalPrice: 500000,
+      address: '123 Test Street'
+    };
+
+    // Mock Booking.find for conflict check (return empty = no conflict)
+    const mockExec = jest.fn().mockResolvedValue([]);
+    const mockFind = jest.fn().mockReturnValue({ exec: mockExec });
+    jest.spyOn(Booking, 'find').mockImplementation(mockFind);
+
+    // Mock dependencies
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    const result = await bookingService.createRedisPendingBooking(mockBookingData);
+
+    expect(mockFind).toHaveBeenCalled(); // Conflict check called
+    expect(generateOrderCode).toHaveBeenCalled();
+    expect(formatBookingResponse).toHaveBeenCalled();
+    expect(redisClient.json.set).toHaveBeenCalledWith(
+      `booking:pending:${mockOrderCode}`,
+      '.',
+      expect.any(Object)
+    );
+    expect(redisClient.expire).toHaveBeenCalledWith(
+      `booking:pending:${mockOrderCode}`,
+      1800
+    );
+    expect(result).toHaveProperty('orderCode', mockOrderCode);
+    expect(result).toHaveProperty('customerPhone', '0912345678');
+    expect(result?.status).toBe('PENDING');
+  });
+
+  test('HP-2: Create pending booking with minimum required fields', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-02T10:00:00Z'),
+      duration: 60,
+      customerPhone: '0987654321',
+      locationType: 'SALON' as any,
+      address: 'Salon Address',
+      totalPrice: 300000
+    };
+
+    const mockOrderCode = 67890;
+    const mockFormattedBooking = {
+      _id: 'mock-id-2',
+      customerName: 'Customer 2',
+      serviceName: 'Service 2',
+      muaName: 'MUA 2',
+      status: 'PENDING',
+      bookingDate: mockBookingData.bookingDate,
+      duration: 60
+    };
+
+    mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    const result = await bookingService.createRedisPendingBooking(mockBookingData);
+
+    expect(result).not.toBeNull();
+    expect(result?.orderCode).toBe(mockOrderCode);
+    expect(result?.customerPhone).toBe('0987654321');
+    expect(redisClient.json.set).toHaveBeenCalled();
+    expect(redisClient.expire).toHaveBeenCalledWith(expect.any(String), 1800);
+  });
+
+  test('HP-3: Create pending booking with early morning time slot (6:00 AM)', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-01T06:00:00Z'),
+      duration: 90,
+      customerPhone: '0901234567',
+      locationType: 'HOME' as any,
+      address: 'Early morning address',
+      totalPrice: 400000
+    };
+
+    const mockOrderCode = 11111;
+    const mockFormattedBooking = {
+      _id: 'early-morning-id',
+      status: 'PENDING',
+      bookingDate: mockBookingData.bookingDate
+    };
+
+    const mockFind = mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    const result = await bookingService.createRedisPendingBooking(mockBookingData);
+
+    expect(result).not.toBeNull();
+    expect(mockFind).toHaveBeenCalled();
+    expect(result?.orderCode).toBe(mockOrderCode);
+  });
+
+  test('HP-4: Create pending booking with late evening time slot (22:00 PM)', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-01T22:00:00Z'),
+      duration: 120,
+      customerPhone: '0911111111',
+      locationType: 'HOME' as any,
+      address: 'Late evening address',
+      totalPrice: 600000
+    };
+
+    const mockOrderCode = 22222;
+    const mockFormattedBooking = {
+      _id: 'late-evening-id',
+      status: 'PENDING',
+      bookingDate: mockBookingData.bookingDate
+    };
+
+    mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    const result = await bookingService.createRedisPendingBooking(mockBookingData);
+
+    expect(result).not.toBeNull();
+    expect(result?.orderCode).toBe(mockOrderCode);
+    expect(redisClient.expire).toHaveBeenCalledWith(
+      `booking:pending:${mockOrderCode}`,
+      1800
+    );
+  });
+
+  test('HP-5: Verify Redis TTL is set correctly (1800 seconds)', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-05T12:00:00Z'),
+      duration: 60,
+      customerPhone: '0922222222',
+      locationType: 'SALON' as any,
+      address: 'TTL test address',
+      totalPrice: 200000
+    };
+
+    const mockOrderCode = 33333;
+    const mockFormattedBooking = {
+      _id: 'ttl-test-id',
+      status: 'PENDING'
+    };
+
+    mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    await bookingService.createRedisPendingBooking(mockBookingData);
+
+    // Verify cache key format
+    expect(redisClient.json.set).toHaveBeenCalledWith(
+      `booking:pending:${mockOrderCode}`,
+      '.',
+      expect.any(Object)
+    );
+
+    // Verify TTL is exactly 1800 seconds (30 minutes)
+    expect(redisClient.expire).toHaveBeenCalledWith(
+      `booking:pending:${mockOrderCode}`,
+      1800
+    );
+    expect(redisClient.expire).toHaveBeenCalledTimes(1);
+  });
+
+  // ========== EDGE CASE SCENARIOS (3 tests) ==========
+
+  test('EDGE-1: Create booking with booking date at exact midnight', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-01T00:00:00Z'),
+      duration: 120,
+      customerPhone: '0933333333',
+      locationType: 'HOME' as any,
+      address: 'Midnight test address',
+      totalPrice: 350000
+    };
+
+    const mockOrderCode = 44444;
+    const mockFormattedBooking = {
+      _id: 'midnight-id',
+      status: 'PENDING',
+      bookingDate: mockBookingData.bookingDate
+    };
+
+    const mockFind = mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    const result = await bookingService.createRedisPendingBooking(mockBookingData);
+
+    expect(result).not.toBeNull();
+    expect(mockFind).toHaveBeenCalled();
+    expect(result?.orderCode).toBe(mockOrderCode);
+  });
+
+  test('EDGE-2: Create booking with very long duration (480 minutes / 8 hours)', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-02T08:00:00Z'),
+      duration: 480,
+      customerPhone: '0944444444',
+      locationType: 'HOME' as any,
+      address: 'Long duration address',
+      totalPrice: 1500000
+    };
+
+    const mockOrderCode = 55555;
+    const mockFormattedBooking = {
+      _id: 'long-duration-id',
+      status: 'PENDING',
+      duration: 480
+    };
+
+    const mockFind = mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    const result = await bookingService.createRedisPendingBooking(mockBookingData);
+
+    expect(result).not.toBeNull();
+    expect(mockFind).toHaveBeenCalled();
+  });
+
+  test('EDGE-3: Create booking with special characters in location', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-03T14:00:00Z'),
+      duration: 90,
+      customerPhone: '0955555555',
+      locationType: 'HOME' as any,
+      address: '123 Đường Nguyễn Văn Linh, Quận 7, TP.HCM (近くのカフェ)',
+      totalPrice: 450000
+    };
+
+    const mockOrderCode = 66666;
+    const mockFormattedBooking = {
+      _id: 'special-chars-id',
+      status: 'PENDING',
+      address: mockBookingData.address
+    };
+
+    mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    const result = await bookingService.createRedisPendingBooking(mockBookingData);
+
+    expect(result).not.toBeNull();
+    expect(redisClient.json.set).toHaveBeenCalled();
+    
+    // Verify JSON serialization preserves special characters
+    const setCallArgs = (redisClient.json.set as jest.Mock).mock.calls[0];
+    expect(setCallArgs[0]).toBe(`booking:pending:${mockOrderCode}`);
+    expect(setCallArgs[1]).toBe('.');
+    // The third argument should be the serialized object
+  });
+
+  // ========== ERROR SCENARIOS (3 tests) ==========
+
+  test('ERR-1: Booking conflict detected - overlapping time', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-01T09:00:00Z'),
+      duration: 120,
+      customerPhone: '0966666666',
+      locationType: 'HOME' as any,
+      address: 'Conflict test address',
+      totalPrice: 500000
+    };
+
+    // Mock conflict: return a booking that overlaps
+    const conflictingBooking = {
+      _id: 'conflict-id',
+      muaId: mockBookingData.muaId,
+      bookingDate: new Date('2025-11-01T08:30:00Z'),
+      duration: 120,
+      status: 'CONFIRMED'
+    };
+    const mockFind = mockWithConflict(conflictingBooking);
+
+    await expect(bookingService.createRedisPendingBooking(mockBookingData))
+      .rejects
+      .toThrow('Booking conflict detected');
+
+    expect(mockFind).toHaveBeenCalled();
+    expect(redisClient.json.set).not.toHaveBeenCalled();
+    expect(redisClient.expire).not.toHaveBeenCalled();
+  });
+
+  test('ERR-2: Redis connection failure when saving', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-04T10:00:00Z'),
+      duration: 60,
+      customerPhone: '0977777777',
+      locationType: 'SALON' as any,
+      address: 'Redis fail test address',
+      totalPrice: 300000
+    };
+
+    const mockOrderCode = 77777;
+    const mockFormattedBooking = {
+      _id: 'redis-fail-id',
+      status: 'PENDING'
+    };
+
+    mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockRejectedValue(new Error('Redis connection lost'));
+
+    await expect(bookingService.createRedisPendingBooking(mockBookingData))
+      .rejects
+      .toThrow('Failed to create booking:');
+
+    expect(redisClient.json.set).toHaveBeenCalled();
+  });
+
+  test('ERR-3: Redis expire operation fails', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-05T15:00:00Z'),
+      duration: 90,
+      customerPhone: '0988888888',
+      locationType: 'HOME' as any,
+      address: 'Expire fail test address',
+      totalPrice: 400000
+    };
+
+    const mockOrderCode = 88888;
+    const mockFormattedBooking = {
+      _id: 'expire-fail-id',
+      status: 'PENDING'
+    };
+
+    mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockRejectedValue(new Error('Expire command failed'));
+
+    await expect(bookingService.createRedisPendingBooking(mockBookingData))
+      .rejects
+      .toThrow('Failed to create booking:');
+
+    expect(redisClient.json.set).toHaveBeenCalled();
+    expect(redisClient.expire).toHaveBeenCalled();
+  });
+
+  // ========== INTEGRATION TEST (1 test) ==========
+
+  test('INT-1: Full workflow - conflict check → orderCode generation → Redis storage', async () => {
+    const mockBookingData = {
+      customerId: new Types.ObjectId().toString(),
+      muaId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      bookingDate: new Date('2025-11-06T11:00:00Z'),
+      duration: 150,
+      customerPhone: '0999999999',
+      locationType: 'HOME' as any,
+      address: '456 Integration Test Street',
+      totalPrice: 750000
+    };
+
+    const mockOrderCode = 99999;
+    const mockFormattedBooking = {
+      _id: 'integration-id',
+      customerName: 'Integration Customer',
+      serviceName: 'Integration Service',
+      muaName: 'Integration MUA',
+      status: 'PENDING',
+      bookingDate: mockBookingData.bookingDate,
+      duration: 150,
+      totalPrice: 750000,
+      address: '456 Integration Test Street'
+    };
+
+    const mockFind = mockNoConflict();
+    (generateOrderCode as jest.Mock).mockReturnValue(mockOrderCode);
+    (formatBookingResponse as jest.Mock).mockReturnValue(mockFormattedBooking);
+    (redisClient.json.set as jest.Mock).mockResolvedValue('OK');
+    (redisClient.expire as jest.Mock).mockResolvedValue(1);
+
+    const result = await bookingService.createRedisPendingBooking(mockBookingData);
+
+    // 1. Verify conflict check was called
+    expect(mockFind).toHaveBeenCalled();
+    expect(mockFind).toHaveBeenCalledTimes(1);
+
+    // 2. Verify generateOrderCode was called once
+    expect(generateOrderCode).toHaveBeenCalledTimes(1);
+
+    // 3. Verify formatBookingResponse was called
+    expect(formatBookingResponse).toHaveBeenCalledTimes(1);
+
+    // 4. Verify redisClient.json.set with correct key format
+    expect(redisClient.json.set).toHaveBeenCalledWith(
+      `booking:pending:${mockOrderCode}`,
+      '.',
+      expect.any(Object)
+    );
+    expect(redisClient.json.set).toHaveBeenCalledTimes(1);
+
+    // 5. Verify redisClient.expire with TTL 1800
+    expect(redisClient.expire).toHaveBeenCalledWith(
+      `booking:pending:${mockOrderCode}`,
+      1800
+    );
+    expect(redisClient.expire).toHaveBeenCalledTimes(1);
+
+    // 6. Verify returned object structure
+    expect(result).not.toBeNull();
+    expect(result).toHaveProperty('orderCode', mockOrderCode);
+    expect(result).toHaveProperty('customerPhone', '0999999999');
+    expect(result).toHaveProperty('status', 'PENDING');
+    expect(result).toHaveProperty('customerName', 'Integration Customer');
+    expect(result).toHaveProperty('serviceName', 'Integration Service');
+    expect(result).toHaveProperty('muaName', 'Integration MUA');
+    expect(result).toHaveProperty('totalPrice', 750000);
+    expect(result).toHaveProperty('address', '456 Integration Test Street');
+
+    // 7. Verify call order
+    const mockCalls = [
+      mockFind.mock.invocationCallOrder[0],
+      (generateOrderCode as jest.Mock).mock.invocationCallOrder[0],
+      (formatBookingResponse as jest.Mock).mock.invocationCallOrder[0],
+      (redisClient.json.set as jest.Mock).mock.invocationCallOrder[0],
+      (redisClient.expire as jest.Mock).mock.invocationCallOrder[0]
+    ];
+    
+    // Each subsequent call should have a higher order number
+    for (let i = 1; i < mockCalls.length; i++) {
+      expect(mockCalls[i]).toBeGreaterThan(mockCalls[i - 1]);
+    }
   });
 });
 
