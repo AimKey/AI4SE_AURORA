@@ -86,21 +86,21 @@ function splitSlotByDuration(slot: any, durationMinutes: number): IBookingSlot[]
 
     return result;
 }
-async function mapToMuaResponse(ele: any): Promise<MuaResponseDTO> {
-    return {
-        _id: ele._id,
-        userId: ele.userId?._id?.toString() || '',
-        userName: ele.userId?.fullName?.toString() || '',
-        avatarUrl: ele.userId?.avatarUrl?.toString() || '',
-        experienceYears: ele.experienceYears || 0,
-        bio: ele.bio,
-        location: ele.location,
-        ratingAverage: ele.ratingAverage,
-        status: ele.status,
-        feedbackCount: ele.feedbackCount,
-        bookingCount: ele.bookingCount,
-    }
-}
+// async function mapToMuaResponse(ele: any): Promise<MuaResponseDTO> {
+//     return {
+//         _id: ele._id,
+//         userId: ele.userId?._id?.toString() || '',
+//         userName: ele.userId?.fullName?.toString() || '',
+//         avatarUrl: ele.userId?.avatarUrl?.toString() || '',
+//         experienceYears: ele.experienceYears || 0,
+//         bio: ele.bio,
+//         location: ele.location,
+//         ratingAverage: ele.ratingAverage,
+//         status: ele.status,
+//         feedbackCount: ele.feedbackCount,
+//         bookingCount: ele.bookingCount,
+//     }
+// }
 
 async function getAvailableSlotsOfMuaByDay(muaId: string, day: string): Promise<ISlot[]> {
     // Get final slots (includes working and booking slots)
@@ -367,9 +367,9 @@ async function checkBookingConflict(
         };
 
         // Exclude current booking if updating
-        if (excludeBookingId) {
-            filter._id = { $ne: excludeBookingId };
-        }
+        // if (excludeBookingId) {
+        //     filter._id = { $ne: excludeBookingId };
+        // }
 
         const existingBookings = await Booking.find(filter).exec();
 

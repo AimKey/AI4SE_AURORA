@@ -135,7 +135,7 @@ formatBookingResponse
 ## Prompt 2: Generate Test Cases outline in testcase.md
 
 - Input Prompt
-  "Generate comprehensive unit test cases to [getAvailableSlotsOfMuaByDay].testcase.md in folder testcases for [Booking.Service.ts] 's [getAvailableSlotsOfMuaByDay]() function:
+  "Generate comprehensive unit test cases to [updateBooking].testcase.md in folder testcases for [Booking.Service.ts] 's [updateBooking]() function:
 
 Include:
 

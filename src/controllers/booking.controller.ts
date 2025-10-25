@@ -13,7 +13,7 @@ import {
   // deleteBooking,
   getAvailableSlotsOfService,
   getAvailableMonthlySlots,
-  getAvailableMuaServicesByDay,
+  // getAvailableMuaServicesByDay,
   createRedisPendingBooking,
   markBookingCompleted
 } from "../services/booking.service";
@@ -115,26 +115,26 @@ export class BookingController {
   }
 
   //READ - lấy mua thỏa mãn day 
-  async getAvailableMuaServicesByDay(req: Request, res: Response): Promise<void> {
-    try {
-      const { day } = req.params;
-      const data = await getAvailableMuaServicesByDay(day);
-      const response: ApiResponseDTO = {
-        status: 200,
-        success: true,
-        message: "Available services retrieved successfully",
-        data
-      };
-      res.status(200).json(response);
-    } catch (error) {
-      const response: ApiResponseDTO = {
-        status: 500,
-        success: false,
-        message: error instanceof Error ? error.message : "Failed to get available services"
-      };
-      res.status(500).json(response);
-    }
-  }
+  // async getAvailableMuaServicesByDay(req: Request, res: Response): Promise<void> {
+  //   try {
+  //     const { day } = req.params;
+  //     const data = await getAvailableMuaServicesByDay(day);
+  //     const response: ApiResponseDTO = {
+  //       status: 200,
+  //       success: true,
+  //       message: "Available services retrieved successfully",
+  //       data
+  //     };
+  //     res.status(200).json(response);
+  //   } catch (error) {
+  //     const response: ApiResponseDTO = {
+  //       status: 500,
+  //       success: false,
+  //       message: error instanceof Error ? error.message : "Failed to get available services"
+  //     };
+  //     res.status(500).json(response);
+  //   }
+  // }
 
   // CREATE - Tạo booking mới
   async create(req: Request, res: Response): Promise<void> {
