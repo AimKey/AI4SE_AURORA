@@ -222,6 +222,14 @@ SOURCE CODE: [paste function code]
 
 What's wrong and how to fix it?"
 
+"Help me fix this failing unit test:
+
+ERROR: TypeError: Cannot read property 'id' of undefined
+TEST CODE: [paste test code]
+SOURCE CODE: [paste function code]
+
+What's wrong and how to fix it?"
+
 ## Prompt 5: Generate Mocks
 
 "Create Jest mock objects for these dependencies in Shopping Cart:

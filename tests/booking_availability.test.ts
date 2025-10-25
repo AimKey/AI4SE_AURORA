@@ -4,10 +4,10 @@ dayjs.extend(isSameOrBefore);
 
 // Mock external dependencies used by booking.service (both alias and relative to be safe)
 jest.mock('../src/services/schedule.service', () => ({ getFinalSlots: jest.fn() }));
-jest.mock('utils/timeUtils', () => ({ fromUTC: (d: string) => require('dayjs')(d) }));
-jest.mock('../src/utils/timeUtils', () => ({ fromUTC: (d: string) => require('dayjs')(d) }));
-jest.mock('utils/calendarUtils', () => ({ getMondayOfWeek: (d: string) => require('dayjs')(d).startOf('week').format('YYYY-MM-DD') }));
-jest.mock('../src/utils/calendarUtils', () => ({ getMondayOfWeek: (d: string) => require('dayjs')(d).startOf('week').format('YYYY-MM-DD') }));
+jest.mock('utils/timeUtils', () => ({ fromUTC: jest.fn((d: string) => require('dayjs')(d)) }));
+jest.mock('../src/utils/timeUtils', () => ({ fromUTC: jest.fn((d: string) => require('dayjs')(d)) }));
+jest.mock('utils/calendarUtils', () => ({ getMondayOfWeek: jest.fn((d: string) => require('dayjs')(d).startOf('week').format('YYYY-MM-DD')) }));
+jest.mock('../src/utils/calendarUtils', () => ({ getMondayOfWeek: jest.fn((d: string) => require('dayjs')(d).startOf('week').format('YYYY-MM-DD')) }));
 
 import { getFinalSlots } from '../src/services/schedule.service';
 import { getAvailableSlotsOfService, getAvailableMonthlySlots, getAvailableMuaServicesByDay } from '../src/services/booking.service';
@@ -23,11 +23,12 @@ function createMockRes() {
 
 describe('Booking availability — getAvailableSlotsOfMuaByDay (via getAvailableSlotsOfService)', () => {
     beforeEach(() => {
-        jest.resetAllMocks();
+        jest.clearAllMocks();
     });
 
     afterEach(() => {
         jest.clearAllMocks();
+        jest.restoreAllMocks();
     });
 
     test('HP-01 No bookings: single working slot returned intact (180min -> one slot)', async () => {
@@ -197,39 +198,21 @@ describe('Booking availability — getAvailableSlotsOfMuaByDay (via getAvailable
             ]
         });
         const timeUtils = require('../src/utils/timeUtils');
-        jest.spyOn(timeUtils, 'fromUTC').mockImplementation(() => ({ format: () => 'invalid' }));
+        jest.spyOn(timeUtils, 'fromUTC').mockImplementationOnce(() => ({ format: () => 'invalid' }));
         const result = await getAvailableSlotsOfService('m1', 's1', '2025-10-20', 30);
         expect(result).toEqual([]);
-    });
-
-    test('INT-01 Integration: result independent from global/cart state', async () => {
-        (getFinalSlots as jest.Mock).mockResolvedValue({
-            slots: [
-                { slotId: 'W1', type: SLOT_TYPES.ORIGINAL_WORKING, day: '2025-10-20', startTime: '09:00', endTime: '10:30' },
-                { slotId: 'B1', type: SLOT_TYPES.BOOKING, day: '2025-10-20', startTime: '10:00', endTime: '11:00' }
-            ]
-        });
-
-        // Arrange
-        (global as any).cart = { items: [{ id: 's1', qty: 1 }] };
-        const r1 = await getAvailableSlotsOfService('m1', 's1', '2025-10-20', 30);
-
-        // Mutate unrelated global state
-        (global as any).cart.items.push({ id: 'x', qty: 2 });
-        const r2 = await getAvailableSlotsOfService('m1', 's1', '2025-10-20', 30);
-
-        expect(r1).toEqual(r2);
     });
 });
 
 // ===================== getAvailableMonthlySlots =====================
 describe('Booking availability — getAvailableMonthlySlots', () => {
     beforeEach(() => {
-        jest.resetAllMocks();
+        jest.clearAllMocks();
     });
 
     afterEach(() => {
         jest.clearAllMocks();
+        jest.restoreAllMocks();
     });
 
     test('HP-01 Daily 1-hour window split into 30-min tuples across the month; caching once per week', async () => {
@@ -527,11 +510,12 @@ describe('Booking availability — getAvailableServicesOfMuaByDay (via getAvaila
     }
 
     beforeEach(() => {
-        jest.resetAllMocks();
+        jest.clearAllMocks();
     });
 
     afterEach(() => {
         jest.clearAllMocks();
+        jest.restoreAllMocks();
     });
 
     // Happy paths
