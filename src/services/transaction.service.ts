@@ -1,6 +1,6 @@
 import { BankAccount, Transaction, Wallet, Withdraw } from "models/transactions.model";
 import type { CreateTransactionDTO, UpdateTransactionDTO, TransactionResponseDTO, PayOSCreateLinkInput, PayOSCreateLinkResult, PaymentWebhookResponse, WalletResponseDTO, WithdrawResponseDTO } from "types/transaction.dto";
-import { createBooking, deleteRedisPendingBooking, getBookingById, getRedisPendingBooking } from "./booking.service";
+import { createBooking, getBookingById, getRedisPendingBooking } from "./booking.service";
 import { BOOKING_STATUS, PAYMENT_METHODS, REFUND_REASON, TRANSACTION_STATUS, WITHDRAW_STATUS, type RefundReason, type TransactionStatus } from "constants/index";
 import type { BookingResponseDTO } from "types";
 import type { CreateBookingDTO, PendingBookingResponseDTO } from "types/booking.dtos";
@@ -21,7 +21,7 @@ dayjs.extend(timezone);
 // ==================== PayOS Integration ====================
 // PayOS functions moved to payos.service.ts
 // Re-export for backward compatibility
-export { createPayOSPaymentLink, makeRefund,makeWithdrawal, generateOrderCode, getPayoutDetail, getPayoutList, buildPayoutListQuery } from "./payos.service";
+export { createPayOSPaymentLink, makeRefund, makeWithdrawal, generateOrderCode, getPayoutDetail, getPayoutList, buildPayoutListQuery } from "./payos.service";
 // UTIL - map mongoose doc to DTO
 function formatWithdrawResponse(withdraw: any): WithdrawResponseDTO {
   const withdrawTime = dayjs(withdraw.createdAt).tz("Asia/Ho_Chi_Minh");
@@ -38,7 +38,7 @@ function formatWithdrawResponse(withdraw: any): WithdrawResponseDTO {
 
 async function formatTransactionResponse(tx: any): Promise<TransactionResponseDTO> {
   // Attempt to extract friendly names from joined docs when available
-  const booking =  await Booking.findById(tx.bookingId).exec();
+  const booking = await Booking.findById(tx.bookingId).exec();
   const serviceId = booking?.serviceId;
   const service = await ServicePackage.findById(serviceId).exec();
   const serviceName = service?.name;
@@ -46,8 +46,8 @@ async function formatTransactionResponse(tx: any): Promise<TransactionResponseDT
   const customerName = customer?.fullName;
   const rawDate = booking?.bookingDate;
   const bookingDay = rawDate ? fromUTC(rawDate) : dayjs();
- const startTime= bookingDay.format("HH:mm");
-  const  endTime= bookingDay.add(booking && typeof booking.duration === "number" ? booking.duration : 0, 'minute').format("HH:mm");
+  const startTime = bookingDay.format("HH:mm");
+  const endTime = bookingDay.add(booking && typeof booking.duration === "number" ? booking.duration : 0, 'minute').format("HH:mm");
   const bookingTime = `${startTime} - ${endTime}`;
   return {
     _id: String(tx._id),
@@ -58,7 +58,7 @@ async function formatTransactionResponse(tx: any): Promise<TransactionResponseDT
     currency: tx.currency || "",
     status: tx.status || 'HOLD',
     paymentMethod: tx.paymentMethod,
-   bookingDay,
+    bookingDay,
     // extra friendly fields expected by DTO
     serviceName,
     customerName,
@@ -67,7 +67,7 @@ async function formatTransactionResponse(tx: any): Promise<TransactionResponseDT
 }
 
 // CREATE
-export async function getCreateTransactionDTO(bookingData: BookingResponseDTO,amount:number,paymentReference:string,currency:string,status:TransactionStatus): Promise<CreateTransactionDTO> {
+export async function getCreateTransactionDTO(bookingData: BookingResponseDTO, amount: number, paymentReference: string, currency: string, status: TransactionStatus): Promise<CreateTransactionDTO> {
   try {
     return {
       bookingId: bookingData._id,
@@ -106,17 +106,17 @@ export async function createTransaction(data: CreateTransactionDTO): Promise<Tra
 export async function handlePayOSWebhook(data: PaymentWebhookResponse): Promise<TransactionResponseDTO | null> {
   // tìm booking và tạo booking
   const pb = await getRedisPendingBooking(data?.data?.orderCode);
-  if(!pb){
+  if (!pb) {
     console.warn(`Pending booking with orderCode ${data?.data?.orderCode} not found. Possibly user cancelled.`);
     return null;
   }
   const b = mapPendingBookingToCreate(pb);
   const bookingData = await createBooking(b);
-  if(bookingData){
-     await deleteRedisPendingBooking(data?.data?.orderCode);
-    }
+  if (bookingData) {
+    // await deleteRedisPendingBooking(data?.data?.orderCode);
+  }
   // check transaction đã tồn tại
-  const existingTransaction = await Transaction.findOne({ bookingId:bookingData._id }).exec();
+  const existingTransaction = await Transaction.findOne({ bookingId: bookingData._id }).exec();
   if (existingTransaction) {
     console.log(`Transaction with reference ${data.data.reference} already exists. Skipping creation.`);
     return formatTransactionResponse(existingTransaction);
@@ -156,80 +156,80 @@ function mapPendingBookingToCreate(pb: PendingBookingResponseDTO): CreateBooking
     note: pb.note,
   };
 }
-export async function handleBalanceConfirmBooking(bookingId:string):Promise<void>{
-//update wallet
-//update transaction
-const bookingData = await getBookingById(bookingId);  
-const muaWallet = await Wallet.findById(bookingData?.artistId).exec();
+export async function handleBalanceConfirmBooking(bookingId: string): Promise<void> {
+  //update wallet
+  //update transaction
+  const bookingData = await getBookingById(bookingId);
+  const muaWallet = await Wallet.findById(bookingData?.artistId).exec();
 
-const transaction = await Transaction.findOne({ bookingId: bookingId }).exec();
-if(transaction && transaction.status===TRANSACTION_STATUS.HOLD && muaWallet){
-  muaWallet.balance += transaction.amount??0;
-  await muaWallet.save();
-  transaction.status = TRANSACTION_STATUS.CAPTURED;
-  await transaction.save();
-}
+  const transaction = await Transaction.findOne({ bookingId: bookingId }).exec();
+  if (transaction && transaction.status === TRANSACTION_STATUS.HOLD && muaWallet) {
+    muaWallet.balance += transaction.amount ?? 0;
+    await muaWallet.save();
+    transaction.status = TRANSACTION_STATUS.CAPTURED;
+    await transaction.save();
+  }
 }
 //haven't capture money to mua yet(mua cancel, user cancel)
-export async function handleRefundBookingBeforeConfirm(bookingId:string, bookingStatus:any):Promise<void>{
-//payout(tim customer, lay bank account tu user)
-//update transaction
-const refundReason: RefundReason = bookingStatus === BOOKING_STATUS.CANCELLED ? REFUND_REASON.CANCELLED : REFUND_REASON.REJECTED;
- const refundResponse = await makeRefund(bookingId,refundReason);
- if(refundResponse.code !== '00'){
-  throw new Error(`Payout failed: ${refundResponse.desc} (code: ${refundResponse.code})`);
- }
- const transaction = await Transaction.findOne({ bookingId: bookingId }).exec();
- const booking = await Booking.findById(bookingId).exec();
- if(transaction &&( transaction.status===TRANSACTION_STATUS.HOLD || transaction.status===TRANSACTION_STATUS.PENDING_REFUND) ){
-  transaction.status = TRANSACTION_STATUS.REFUNDED;
-  transaction.payoutId = refundResponse.data.id;
-  await transaction.save();
- }
- if(booking && booking.status === BOOKING_STATUS.PENDING){
-  booking.status = bookingStatus;
-  await booking.save();
- }
+export async function handleRefundBookingBeforeConfirm(bookingId: string, bookingStatus: any): Promise<void> {
+  //payout(tim customer, lay bank account tu user)
+  //update transaction
+  const refundReason: RefundReason = bookingStatus === BOOKING_STATUS.CANCELLED ? REFUND_REASON.CANCELLED : REFUND_REASON.REJECTED;
+  const refundResponse = await makeRefund(bookingId, refundReason);
+  if (refundResponse.code !== '00') {
+    throw new Error(`Payout failed: ${refundResponse.desc} (code: ${refundResponse.code})`);
+  }
+  const transaction = await Transaction.findOne({ bookingId: bookingId }).exec();
+  const booking = await Booking.findById(bookingId).exec();
+  if (transaction && (transaction.status === TRANSACTION_STATUS.HOLD || transaction.status === TRANSACTION_STATUS.PENDING_REFUND)) {
+    transaction.status = TRANSACTION_STATUS.REFUNDED;
+    transaction.payoutId = refundResponse.data.id;
+    await transaction.save();
+  }
+  if (booking && booking.status === BOOKING_STATUS.PENDING) {
+    booking.status = bookingStatus;
+    await booking.save();
+  }
 
- // Send refund success notification to customer
- try {
-   const customer = await User.findById(transaction?.customerId).exec();
-   const service = await ServicePackage.findById(booking?.serviceId).exec();
-   
-   if (customer && customer.email) {
-     const emailService = new EmailService();
-     await emailService.sendRefundSuccessNotification(
-       customer.email,
-       customer.fullName || 'Customer',
-       transaction?.amount || 0,
-       bookingId,
-       service?.name || 'Service',
-       refundResponse.data.id
-     );
-   }
- } catch (emailError) {
-   console.error('Failed to send refund success notification:', emailError);
-   // Don't throw error here to avoid breaking the refund process
- }
+  // Send refund success notification to customer
+  try {
+    const customer = await User.findById(transaction?.customerId).exec();
+    const service = await ServicePackage.findById(booking?.serviceId).exec();
+
+    if (customer && customer.email) {
+      const emailService = new EmailService();
+      await emailService.sendRefundSuccessNotification(
+        customer.email,
+        customer.fullName || 'Customer',
+        transaction?.amount || 0,
+        bookingId,
+        service?.name || 'Service',
+        refundResponse.data.id
+      );
+    }
+  } catch (emailError) {
+    console.error('Failed to send refund success notification:', emailError);
+    // Don't throw error here to avoid breaking the refund process
+  }
 }
-export async function handleWithdrawalMUA(muaId:string):Promise<void>{
+export async function handleWithdrawalMUA(muaId: string): Promise<void> {
   const wallet = await Wallet.findOne({ muaId }).exec();
-  if(!wallet){
+  if (!wallet) {
     throw new Error(`Wallet for MUA ${muaId} not found`);
   }
-  if(wallet.balance <=0){
+  if (wallet.balance <= 0) {
     throw new Error(`Wallet for MUA ${muaId} has insufficient balance`);
   }
- 
+
   const withdrawalAmount = wallet.balance; // Store the amount before reset
   const payoutResponse = await makeWithdrawal(muaId);
-  if(payoutResponse.code !== '00'){
+  if (payoutResponse.code !== '00') {
     throw new Error(`Payout failed: ${payoutResponse.desc} (code: ${payoutResponse.code})`);
   }
   const existingWithdraw = await Withdraw.findOne({ muaId: muaId, status: WITHDRAW_STATUS.PENDING }).exec();
   if (existingWithdraw) {
     existingWithdraw.status = WITHDRAW_STATUS.SUCCESS;
-    existingWithdraw.reference= payoutResponse.data.id;
+    existingWithdraw.reference = payoutResponse.data.id;
     await existingWithdraw.save();
   }
   //reset balance
@@ -240,7 +240,7 @@ export async function handleWithdrawalMUA(muaId:string):Promise<void>{
   try {
     const mua = await MUA.findById(muaId).populate('userId').exec();
     const user = mua?.userId as any;
-    
+
     if (user && user.email) {
       const emailService = new EmailService();
       await emailService.sendWithdrawalSuccessNotification(
@@ -317,7 +317,7 @@ export async function getTransactionsByMuaId(
   page: number = 1,
   pageSize: number = 10,
   status?: TransactionStatus
-): Promise<{ transactions: TransactionResponseDTO[]; total: number; page: number; totalPages: number }>{
+): Promise<{ transactions: TransactionResponseDTO[]; total: number; page: number; totalPages: number }> {
   try {
     const matchStage: any = {};
     if (status) matchStage.status = status;
@@ -340,7 +340,7 @@ export async function getTransactionsByMuaId(
             { $skip: (page - 1) * pageSize },
             { $limit: pageSize }
           ],
-          count: [ { $count: 'total' } ]
+          count: [{ $count: 'total' }]
         }
       }
     ].filter(Boolean);
@@ -388,31 +388,31 @@ export async function getWithdrawalsByMuaId(
   pageSize: number = 10,
   status?: string
 ): Promise<{ withdrawals: WithdrawResponseDTO[]; total: number; page: number; totalPages: number }> {
-    const skip = (page - 1) * pageSize;
-    const query: any = { muaId: new mongoose.Types.ObjectId(muaId) };
-    
-    // Add status filter if provided
-    if (status) {
-      query.status = status;
-    }
+  const skip = (page - 1) * pageSize;
+  const query: any = { muaId: new mongoose.Types.ObjectId(muaId) };
 
-    const [docs, total] = await Promise.all([
-      Withdraw.find(query)
-        .skip(skip)
-        .limit(pageSize)
-        .sort({ createdAt: -1 })
-        .exec(),
-      Withdraw.countDocuments(query),
-    ]);
+  // Add status filter if provided
+  if (status) {
+    query.status = status;
+  }
 
-    const withdrawals = docs.map(formatWithdrawResponse);
+  const [docs, total] = await Promise.all([
+    Withdraw.find(query)
+      .skip(skip)
+      .limit(pageSize)
+      .sort({ createdAt: -1 })
+      .exec(),
+    Withdraw.countDocuments(query),
+  ]);
 
-    return {
-      withdrawals,
-      total,
-      page,
-      totalPages: Math.ceil(total / pageSize),
-    };
+  const withdrawals = docs.map(formatWithdrawResponse);
+
+  return {
+    withdrawals,
+    total,
+    page,
+    totalPages: Math.ceil(total / pageSize),
+  };
 }
 
 
