@@ -139,7 +139,7 @@ formatBookingResponse
 
 Include:
 
-- Happy path scenarios - 3 test method
+- Happy path scenarios - 5 test method
 - Edge cases (boundary values) - 3 test method
 - Error scenarios - 3 test method
 - Integration with cart state - 1 test method
@@ -230,12 +230,14 @@ SOURCE CODE: [paste function code]
 
 What's wrong and how to fix it?"
 
-## Prompt 5: Generate Mocks
+## Prompt 5: Optimize Mocks
 
-"Create Jest mock objects for these dependencies in Shopping Cart:
+Optimize Jest mocks for dependencies in [file_name].ts:
 
-- ProductService.getProduct(id)
-- UserService.getUserById(id)
-- DiscountService.validateCode(code)
+[Code]
 
-Include realistic test data and proper mock setup/teardown."
+→ Extract all mock logic (jest.spyOn, jest.fn, mockImplementation, mockResolvedValue, etc.) into a separate file /mocks/[file_name].mock.ts.→ Group related mocks into clear reusable functions with brief comments and exports.→ Keep all tests (Arrange–Act–Assert) intact in the refactored .test.ts, importing mocks from /mocks.→ Use realistic test data and include proper setup/teardown (beforeEach / afterEach).→ Output two valid TypeScript + Jest (ESM) files:
+
+/mocks/[file_name].mock.ts
+
+[file_name].test.ts (refactored).
