@@ -1,136 +1,250 @@
-# Test Case Specification — getAllBookings
+# getAllBookings() — Test cases
 
-Service under test: `src/services/booking.service.ts#getAllBookings(page?: number, pageSize?: number, status?: string)`
-
-Primary behavior:
-
-- Query bookings with optional status filter and pagination: `Booking.find(filter).populate(...).skip(skip).limit(pageSize).sort({ createdAt: -1 }).exec()`
-- Count total documents with the same filter via `Booking.countDocuments(filter)`
-- Format each booking with `formatBookingResponse`
-- Return `{ bookings, total, page, totalPages }` where `totalPages = Math.ceil(total / pageSize)`
-- Wrap and rethrow unexpected errors with `Failed to get bookings: ...`
-
-## Dependencies and mocks
-
-- Booking model (mongoose):
-  - `find(filter)` returning a chainable query supporting `.populate().skip().limit().sort().exec()`
-  - `countDocuments(filter)` resolving to a numeric total
-- `formatBookingResponse(booking)` from the formatter utility
-
-Recommended mock pattern:
-
-- `makeQuery(result)` → `{ populate: fn→this, skip: fn→this, limit: fn→this, sort: fn→this, exec: fn→Promise(result), lean: fn→Promise(result) }`
-- `Booking.find` returns this query instance; `countDocuments` returns a Promise<number>
-- `formatBookingResponse` returns a stable DTO per booking for easy assertions
-
-## Conventions
-
-- Test ordering within the suite: Happy → Edge → Error → Integration
-- Test name prefixes:
-  - Happy: `HP-GAB-#`
-  - Edge: `EDGE-GAB-#`
-  - Error: `ERR-GAB-#`
-  - Integration-like: `INT-GAB-1`
-- Each test uses Arrange / Act / Assert
-
-## Happy path scenarios (5)
-
-1. HP-GAB-1: returns formatted bookings and correct pagination defaults
-
-- Arrange: page omitted (defaults 1), pageSize omitted (defaults 10), `find.exec` → 2 docs, `countDocuments` → 2
-- Act: call `getAllBookings()`
-- Assert: returns `{ bookings: [DTO, DTO], total: 2, page: 1, totalPages: 1 }`; formatter called twice
-
-2. HP-GAB-2: applies status filter when provided
-
-- Arrange: status = 'CONFIRMED', `find` and `countDocuments` verify filter `{ status: 'CONFIRMED' }`
-- Act: call with status
-- Assert: both `find` and `countDocuments` invoked with the same filter
-
-3. HP-GAB-3: respects skip/limit from page and pageSize
-
-- Arrange: page = 2, pageSize = 5 → skip = 5; capture query to assert `.skip(5).limit(5)`
-- Act: call with page and pageSize
-- Assert: `.skip` called with 5 and `.limit` with 5
-
-4. HP-GAB-4: sorts by createdAt descending
-
-- Arrange: capture query
-- Act: call
-- Assert: `.sort({ createdAt: -1 })` called once
-
-5. HP-GAB-5: populates relations before mapping
-
-- Arrange: capture query
-- Act: call
-- Assert: `.populate('customerId serviceId')` called before `exec`; formatter called for each doc
-
-## Edge cases (3)
-
-1. EDGE-GAB-1: empty list yields empty results and zero totals
-
-- Arrange: `find.exec` → [], `countDocuments` → 0
-- Act: call
-- Assert: `{ bookings: [], total: 0, totalPages: 0 }` and formatter not called
-
-2. EDGE-GAB-2: single-item pages produce correct totalPages
-
-- Arrange: pageSize = 1, `countDocuments` → 3
-- Act: call with `pageSize=1`
-- Assert: `totalPages` equals 3
-
-3. EDGE-GAB-3: page beyond last returns empty page but preserves metadata
-
-- Arrange: total = 5, pageSize = 2 → totalPages = 3; request page = 4; `find.exec` → []
-- Act: call
-- Assert: `{ bookings: [], total: 5, page: 4, totalPages: 3 }`
-
-## Error scenarios (3)
-
-1. ERR-GAB-1: formatter throws for an item → service wraps error
-
-- Arrange: `find.exec` → [doc], `countDocuments` → 1; `formatBookingResponse` throws
-- Act: call
-- Assert: rejects with message containing `Failed to get bookings`
-
-2. ERR-GAB-2: DB query (`exec`) rejects
-
-- Arrange: `find.exec` rejects with `new Error('db failure')`
-- Act: call
-- Assert: rejects with wrapped error message
-
-3. ERR-GAB-3: `countDocuments` rejects
-
-- Arrange: `countDocuments` rejects with `new Error('count failure')`
-- Act: call
-- Assert: rejects with wrapped error message
-
-## Integration with cart state (integration-like) (1)
-
-1. INT-GAB-1: end-to-end query + count + map with status filter and pagination
-
-- Arrange: status = 'PENDING', page = 3, pageSize = 2 → skip = 4; `find` returns 2 docs; `countDocuments` → 7; formatter returns DTOs
-- Act: call
-- Assert: `.find({ status:'PENDING' }).populate(...).skip(4).limit(2).sort({ createdAt:-1 }).exec()` invoked; `countDocuments({ status:'PENDING' })` invoked; returns `{ bookings: [DTO, DTO], total: 7, page: 3, totalPages: 4 }`
-
-## Notes on mocking shapes
-
-- Minimal booking doc example:
+This file documents unit test cases for:
 
 ```ts
-{ _id: 'b1', status: 'CONFIRMED', createdAt: new Date(), customerId: { _id: 'u1' }, serviceId: { _id: 's1' } }
+export async function getAllBookings(
+    page: number = 1, 
+    pageSize: number = 10,
+    status?: string
+): Promise<{ bookings: BookingResponseDTO[], total: number, page: number, totalPages: number }>
 ```
 
-- Formatter DTO example:
+Behavior summary (from implementation):
+- Calculates `skip = (page - 1) * pageSize`
+- Builds filter object, optionally including `status` if provided
+- Executes `Promise.all([Booking.find(filter).populate('customerId serviceId').skip(skip).limit(pageSize).sort({ createdAt: -1 }).exec(), Booking.countDocuments(filter)])`
+- Maps bookings through `formatBookingResponse()`
+- Returns object with `{ bookings, total, page, totalPages: Math.ceil(total / pageSize) }`
+- On unexpected errors throws `Error('Failed to get bookings: ...')`
 
+----
+
+Test structure for each case:
+- Title — short test name
+- Purpose — what to verify
+- Mocks / preconditions — how to stub `Booking.find`, `Booking.countDocuments`, and `formatBookingResponse`
+- Input — page, pageSize, status
+- Expected output / assertions
+- Steps — arrange / act / assert
+
+----
+
+## Happy path scenarios (5 tests)
+
+### HP-1: Default pagination (page=1, pageSize=10, no status filter)
+- **Purpose**: Verify normal retrieval with default parameters
+- **Mocks**: 
+  - `Booking.find({})` returns chain → `.exec()` resolves to array of 5 bookings
+  - `Booking.countDocuments({})` resolves to 5
+  - `formatBookingResponse` maps each booking to DTO
+- **Input**: `page=1, pageSize=10, status=undefined`
+- **Expected**: 
+  - `skip(0)`, `limit(10)` called
+  - Returns `{ bookings: [5 DTOs], total: 5, page: 1, totalPages: 1 }`
+  - Bookings sorted by `createdAt: -1`
+
+### HP-2: Custom pagination (page=2, pageSize=5)
+- **Purpose**: Verify pagination calculation with custom values
+- **Mocks**: 
+  - `Booking.find({})` → 5 bookings (representing page 2)
+  - `Booking.countDocuments({})` → 15 total
+- **Input**: `page=2, pageSize=5, status=undefined`
+- **Expected**: 
+  - `skip(5)` called (skips first 5)
+  - Returns `{ bookings: [5 DTOs], total: 15, page: 2, totalPages: 3 }`
+
+### HP-3: Filter by status (status='CONFIRMED')
+- **Purpose**: Verify status filtering works correctly
+- **Mocks**: 
+  - `Booking.find({ status: 'CONFIRMED' })` → 3 confirmed bookings
+  - `Booking.countDocuments({ status: 'CONFIRMED' })` → 3
+- **Input**: `page=1, pageSize=10, status='CONFIRMED'`
+- **Expected**: 
+  - Filter includes `{ status: 'CONFIRMED' }`
+  - Returns `{ bookings: [3 DTOs], total: 3, page: 1, totalPages: 1 }`
+
+### HP-4: Combined filters (page=3, pageSize=20, status='PENDING')
+- **Purpose**: Verify all parameters work together
+- **Mocks**: 
+  - `Booking.find({ status: 'PENDING' })` → empty array
+  - `Booking.countDocuments({ status: 'PENDING' })` → 45 total
+- **Input**: `page=3, pageSize=20, status='PENDING'`
+- **Expected**: 
+  - `skip(40)`, `limit(20)` called
+  - Returns `{ bookings: [], total: 45, page: 3, totalPages: 3 }`
+
+### HP-5: Empty result set (no bookings in database)
+- **Purpose**: Verify graceful handling of empty database
+- **Mocks**: 
+  - `Booking.find({})` → empty array
+  - `Booking.countDocuments({})` → 0
+- **Input**: `page=1, pageSize=10, status=undefined`
+- **Expected**: 
+  - Returns `{ bookings: [], total: 0, page: 1, totalPages: 0 }`
+  - No errors thrown
+
+----
+
+## Edge cases (boundary values) (3 tests)
+
+### EDGE-1: Page=0 (boundary value)
+- **Purpose**: Test behavior with zero page number
+- **Mocks**: 
+  - `Booking.find({})` → 10 bookings
+  - `Booking.countDocuments({})` → 10
+- **Input**: `page=0, pageSize=10, status=undefined`
+- **Expected**: 
+  - `skip(-10)` calculated (page 0 - 1) * 10
+  - Function executes (MongoDB may handle negative skip)
+  - Returns result with `page: 0`
+
+### EDGE-2: Very large pageSize (pageSize=1000)
+- **Purpose**: Test handling of large page sizes
+- **Mocks**: 
+  - `Booking.find({})` → array of 1000 bookings
+  - `Booking.countDocuments({})` → 1000
+- **Input**: `page=1, pageSize=1000, status=undefined`
+- **Expected**: 
+  - `limit(1000)` called
+  - Returns `{ bookings: [1000 DTOs], total: 1000, page: 1, totalPages: 1 }`
+  - Performance may be slow but should complete
+
+### EDGE-3: Exact page boundary (total=30, pageSize=10, page=3)
+- **Purpose**: Test totalPages calculation at exact boundary
+- **Mocks**: 
+  - `Booking.find({})` → 10 bookings
+  - `Booking.countDocuments({})` → 30
+- **Input**: `page=3, pageSize=10, status=undefined`
+- **Expected**: 
+  - `skip(20)`, `limit(10)` called
+  - Returns `{ bookings: [10 DTOs], total: 30, page: 3, totalPages: 3 }`
+  - `Math.ceil(30/10) = 3`
+
+----
+
+## Error scenarios (3 tests)
+
+### ERR-1: Database connection fails during find()
+- **Purpose**: Verify error handling when database query fails
+- **Mocks**: 
+  - `Booking.find().populate().skip().limit().sort().exec()` → rejects with `Error('DB connection lost')`
+- **Input**: `page=1, pageSize=10, status=undefined`
+- **Expected**: 
+  - Function throws `Error('Failed to get bookings: Error: DB connection lost')`
+  - Error message includes original error
+
+### ERR-2: countDocuments() throws error
+- **Purpose**: Verify error handling when count query fails
+- **Mocks**: 
+  - `Booking.find()...exec()` → resolves successfully
+  - `Booking.countDocuments()` → rejects with `Error('Count query failed')`
+- **Input**: `page=1, pageSize=10, status=undefined`
+- **Expected**: 
+  - `Promise.all` rejects
+  - Function throws `Error('Failed to get bookings: ...')`
+
+### ERR-3: formatBookingResponse throws error
+- **Purpose**: Verify error handling during response formatting
+- **Mocks**: 
+  - `Booking.find()...exec()` → resolves to [booking1, booking2]
+  - `Booking.countDocuments()` → resolves to 2
+  - `formatBookingResponse` → throws `Error('Invalid booking data')` on first call
+- **Input**: `page=1, pageSize=10, status=undefined`
+- **Expected**: 
+  - Function throws during `.map()` operation
+  - Error propagates: `Error('Failed to get bookings: ...')`
+
+----
+
+## Integration with state (1 test)
+
+### INT-1: Full flow with realistic data - verify all components work together
+- **Purpose**: Simulate production scenario with complete data flow
+- **Mocks**: 
+  - `Booking.find({ status: 'COMPLETED' })` returns array of 2 populated bookings with:
+    - `_id`, `customerId: { _id, fullName }`, `serviceId: { _id, name, price }`, `status: 'COMPLETED'`, `bookingDate`, `duration`, `totalPrice`, etc.
+  - `Booking.countDocuments({ status: 'COMPLETED' })` → 15
+  - `formatBookingResponse` properly transforms each booking
+- **Input**: `page=1, pageSize=3, status='COMPLETED'`
+- **Expected**: 
+  - Verify `Booking.find` called with correct filter `{ status: 'COMPLETED' }`
+  - Verify `populate('customerId serviceId')` called
+  - Verify `skip(0)` and `limit(3)` called
+  - Verify `sort({ createdAt: -1 })` called
+  - Returns structured response:
+    ```ts
+    {
+      bookings: [
+        { _id: 'b1', customerName: 'Alice', serviceName: 'Makeup', status: 'COMPLETED', ... },
+        { _id: 'b2', customerName: 'Bob', serviceName: 'Hair Styling', status: 'COMPLETED', ... }
+      ],
+      total: 15,
+      page: 1,
+      totalPages: 5
+    }
+    ```
+  - Verify `formatBookingResponse` called 2 times
+  - Verify data integrity maintained through entire flow
+
+----
+
+## Notes for test authors
+
+**Mocking Booking.find chain:**
 ```ts
-{ _id: 'b1', status: 'CONFIRMED', customerId: 'u1', serviceId: 's1', bookingDate: '2024-01-01', startTime: '09:00', endTime: '10:00', duration: 60 }
+const mockExec = jest.fn().mockResolvedValue([booking1, booking2]);
+const mockSort = jest.fn().mockReturnValue({ exec: mockExec });
+const mockLimit = jest.fn().mockReturnValue({ sort: mockSort });
+const mockSkip = jest.fn().mockReturnValue({ limit: mockLimit });
+const mockPopulate = jest.fn().mockReturnValue({ skip: mockSkip });
+const mockFind = jest.fn().mockReturnValue({ populate: mockPopulate });
+
+jest.spyOn(Booking, 'find').mockImplementation(mockFind);
 ```
 
-## Acceptance criteria
+**Mocking countDocuments:**
+```ts
+jest.spyOn(Booking, 'countDocuments').mockResolvedValue(15);
+```
 
-- Exactly 12 unit tests plus 1 integration-like test are specified as above
-- Tests follow Arrange/Act/Assert, with prefixes and ordering as defined
-- Uses chainable query mock for `.find().populate().skip().limit().sort().exec()` and a stubbed `formatBookingResponse`
-- Verifies filter application, pagination math, sorting, and mapping
-- Ready to translate into Jest tests in `tests/`, reusing the established mocking pattern from `tests/booking_create_crud.test.ts`
+**Mocking formatBookingResponse:**
+```ts
+jest.spyOn(bookingService, 'formatBookingResponse').mockImplementation((booking) => ({
+  _id: booking._id.toString(),
+  customerName: booking.customerId?.fullName || '',
+  // ... other fields
+}));
+```
+
+**Error testing:**
+```ts
+await expect(getAllBookings(1, 10)).rejects.toThrow('Failed to get bookings:');
+```
+
+**Cleanup:**
+```ts
+afterEach(() => {
+  jest.restoreAllMocks();
+  jest.clearAllMocks();
+});
+```
+
+----
+
+## Implementation checklist
+
+- [ ] HP-1: Default pagination test
+- [ ] HP-2: Custom pagination test
+- [ ] HP-3: Status filter test
+- [ ] HP-4: Combined filters test
+- [ ] HP-5: Empty result test
+- [ ] EDGE-1: Page=0 test
+- [ ] EDGE-2: Large pageSize test
+- [ ] EDGE-3: Exact boundary test
+- [ ] ERR-1: Database find error test
+- [ ] ERR-2: Count error test
+- [ ] ERR-3: Format error test
+- [ ] INT-1: Full integration test
+
+Total: 12 test cases

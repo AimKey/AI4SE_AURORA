@@ -23,5 +23,5 @@
       "@controllers/*": ["controllers/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "tests"]
 }
