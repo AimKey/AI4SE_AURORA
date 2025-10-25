@@ -1715,4 +1715,322 @@ describe('createRedisPendingBooking (Service)', () => {
   });
 });
 
+// ==================== TEST SUITE: getRedisPendingBooking (Service Layer) ====================
+describe('getRedisPendingBooking (Service)', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+  });
+
+  // ========== HAPPY PATH SCENARIOS (5 tests) ==========
+
+  test('HP-1: Successfully retrieve existing pending booking', async () => {
+    const mockOrderCode = 12345;
+    const mockPendingBooking = {
+      _id: 'booking123',
+      customerId: 'cust456',
+      customerName: 'John Doe',
+      customerPhone: '0912345678',
+      muaId: 'mua789',
+      muaName: 'Expert MUA',
+      serviceId: 'svc101',
+      serviceName: 'Bridal Makeup',
+      bookingDate: new Date('2025-11-01T09:00:00Z'),
+      duration: 120,
+      status: 'pending',
+      totalPrice: 500000,
+      locationType: 'customer_location',
+      address: '123 Test Street',
+      orderCode: mockOrderCode,
+      createdAt: new Date('2025-10-25T08:00:00Z')
+    };
+
+    (redisClient.json.get as jest.Mock).mockResolvedValue(mockPendingBooking);
+
+    const result = await bookingService.getRedisPendingBooking(mockOrderCode);
+
+    expect(redisClient.json.get).toHaveBeenCalledWith('booking:pending:12345');
+    expect(redisClient.json.get).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(mockPendingBooking);
+    expect(result?.orderCode).toBe(12345);
+    expect(result?.customerPhone).toBe('0912345678');
+    expect(result?.status).toBe('pending');
+  });
+
+  test('HP-2: Return null when booking not found (expired or never existed)', async () => {
+    const mockOrderCode = 99999;
+
+    (redisClient.json.get as jest.Mock).mockResolvedValue(null);
+
+    const result = await bookingService.getRedisPendingBooking(mockOrderCode);
+
+    expect(redisClient.json.get).toHaveBeenCalledWith('booking:pending:99999');
+    expect(result).toBeNull();
+  });
+
+  test('HP-3: Retrieve booking with minimal data structure', async () => {
+    const mockOrderCode = 11111;
+    const minimalBooking = {
+      _id: 'b1',
+      customerId: 'c1',
+      muaId: 'm1',
+      serviceId: 's1',
+      bookingDate: new Date('2025-11-01T10:00:00Z'),
+      duration: 60,
+      status: 'pending',
+      totalPrice: 0,
+      customerPhone: '',
+      orderCode: mockOrderCode
+    };
+
+    (redisClient.json.get as jest.Mock).mockResolvedValue(minimalBooking);
+
+    const result = await bookingService.getRedisPendingBooking(mockOrderCode);
+
+    expect(result).toEqual(minimalBooking);
+    expect(result?.orderCode).toBe(11111);
+    expect(result?._id).toBe('b1');
+  });
+
+  test('HP-4: Retrieve booking with complete data (all optional fields populated)', async () => {
+    const mockOrderCode = 54321;
+    const completeBooking = {
+      _id: 'booking-full-123',
+      customerId: 'customer-456',
+      customerName: 'Nguyễn Văn A',
+      customerPhone: '0901234567',
+      artistId: 'mua-789',
+      serviceId: 'service-101',
+      serviceName: 'Bridal Makeup Package',
+      bookingDate: '2025-12-25T14:00:00Z',
+      startTime: '14:00',
+      endTime: '17:00',
+      duration: 180,
+      status: 'PENDING' as any,
+      totalPrice: 1500000,
+      locationType: 'customer_location' as any,
+      address: '123 Nguyễn Huệ, Q1, TPHCM',
+      note: 'Special requirements: Natural look',
+      servicePrice: 1500000,
+      orderCode: mockOrderCode,
+      createdAt: new Date('2025-10-25T10:00:00Z'),
+      updatedAt: new Date('2025-10-25T10:00:00Z')
+    };
+
+    (redisClient.json.get as jest.Mock).mockResolvedValue(completeBooking);
+
+    const result = await bookingService.getRedisPendingBooking(mockOrderCode);
+
+    expect(result).toEqual(completeBooking);
+    expect(result?.orderCode).toBe(54321);
+    expect(result?.customerPhone).toBe('0901234567');
+    expect(result?.customerName).toBe('Nguyễn Văn A');
+    expect(result?.note).toBe('Special requirements: Natural look');
+    expect(result?.totalPrice).toBe(1500000);
+  });
+
+  test('HP-5: Retrieve booking multiple times (cache hit consistency)', async () => {
+    const mockOrderCode = 77777;
+    const cachedBooking = {
+      _id: 'b-cache-test',
+      customerId: 'c-cache',
+      muaId: 'm-cache',
+      serviceId: 's-cache',
+      bookingDate: new Date('2025-11-10T15:00:00Z'),
+      duration: 90,
+      status: 'pending',
+      totalPrice: 350000,
+      customerPhone: '0933333333',
+      orderCode: mockOrderCode
+    };
+
+    const getSpy = redisClient.json.get as jest.Mock;
+    getSpy.mockResolvedValue(cachedBooking);
+
+    const result1 = await bookingService.getRedisPendingBooking(mockOrderCode);
+    const result2 = await bookingService.getRedisPendingBooking(mockOrderCode);
+    const result3 = await bookingService.getRedisPendingBooking(mockOrderCode);
+
+    expect(result1).toEqual(result2);
+    expect(result2).toEqual(result3);
+    expect(getSpy).toHaveBeenCalledTimes(3);
+    expect(getSpy).toHaveBeenCalledWith('booking:pending:77777');
+  });
+
+  // ========== EDGE CASES (3 tests) ==========
+
+  test('EDGE-1: Very large orderCode (boundary value)', async () => {
+    const largeOrderCode = Number.MAX_SAFE_INTEGER; // 9007199254740991
+    const bookingWithLargeCode = {
+      _id: 'b-large',
+      customerId: 'c-large',
+      muaId: 'm-large',
+      serviceId: 's-large',
+      bookingDate: new Date('2025-11-15T12:00:00Z'),
+      duration: 120,
+      status: 'pending',
+      totalPrice: 500000,
+      customerPhone: '0944444444',
+      orderCode: largeOrderCode
+    };
+
+    (redisClient.json.get as jest.Mock).mockResolvedValue(bookingWithLargeCode);
+
+    const result = await bookingService.getRedisPendingBooking(largeOrderCode);
+
+    expect(redisClient.json.get).toHaveBeenCalledWith('booking:pending:9007199254740991');
+    expect(result).toEqual(bookingWithLargeCode);
+    expect(result?.orderCode).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  test('EDGE-2: OrderCode with leading zeros (number type coercion)', async () => {
+    const orderCodeWithZeros = 123; // JavaScript: 00123 → 123
+    const bookingWithZeros = {
+      _id: 'b-zeros',
+      customerId: 'c-zeros',
+      muaId: 'm-zeros',
+      serviceId: 's-zeros',
+      bookingDate: new Date('2025-11-20T08:00:00Z'),
+      duration: 60,
+      status: 'pending',
+      totalPrice: 200000,
+      customerPhone: '0955555555',
+      orderCode: 123
+    };
+
+    (redisClient.json.get as jest.Mock).mockResolvedValue(bookingWithZeros);
+
+    const result = await bookingService.getRedisPendingBooking(orderCodeWithZeros);
+
+    expect(redisClient.json.get).toHaveBeenCalledWith('booking:pending:123');
+    expect(result?.orderCode).toBe(123);
+  });
+
+  test('EDGE-3: Redis returns malformed data (not matching DTO structure)', async () => {
+    const mockOrderCode = 88888;
+    const malformedData = {
+      _id: 'malformed',
+      // Missing required fields: customerId, muaId, serviceId, etc.
+      randomField: 'unexpected',
+      anotherField: 12345
+    };
+
+    (redisClient.json.get as jest.Mock).mockResolvedValue(malformedData);
+
+    const result = await bookingService.getRedisPendingBooking(mockOrderCode);
+
+    // Function doesn't validate data structure, trusts Redis content
+    expect(result).toEqual(malformedData);
+    expect(result).toHaveProperty('randomField', 'unexpected');
+    expect(result).not.toHaveProperty('customerPhone');
+  });
+
+  // ========== ERROR SCENARIOS (3 tests) ==========
+
+  test('ERR-1: Redis connection failure', async () => {
+    const mockOrderCode = 12345;
+
+    (redisClient.json.get as jest.Mock).mockRejectedValue(
+      new Error('ECONNREFUSED - Redis server not available')
+    );
+
+    await expect(bookingService.getRedisPendingBooking(mockOrderCode))
+      .rejects
+      .toThrow('Failed to get booking:');
+
+    await expect(bookingService.getRedisPendingBooking(mockOrderCode))
+      .rejects
+      .toThrow('ECONNREFUSED - Redis server not available');
+  });
+
+  test('ERR-2: Redis timeout during read operation', async () => {
+    const mockOrderCode = 55555;
+
+    (redisClient.json.get as jest.Mock).mockRejectedValue(
+      new Error('Command timed out after 5000ms')
+    );
+
+    await expect(bookingService.getRedisPendingBooking(mockOrderCode))
+      .rejects
+      .toThrow('Failed to get booking:');
+
+    expect(redisClient.json.get).toHaveBeenCalledWith('booking:pending:55555');
+  });
+
+  test('ERR-3: Redis throws non-Error object (edge error case)', async () => {
+    const mockOrderCode = 99999;
+
+    (redisClient.json.get as jest.Mock).mockRejectedValue(
+      'String error instead of Error object'
+    );
+
+    await expect(bookingService.getRedisPendingBooking(mockOrderCode))
+      .rejects
+      .toThrow('Failed to get booking: String error instead of Error object');
+  });
+
+  // ========== INTEGRATION TEST (1 test) ==========
+
+  test('INT-1: Full flow - verify cache key format and data integrity', async () => {
+    const mockOrderCode = 12345;
+    const originalBookingData = {
+      _id: new Types.ObjectId().toString(),
+      customerId: new Types.ObjectId().toString(),
+      customerName: 'Trần Thị B',
+      customerPhone: '0987654321',
+      artistId: new Types.ObjectId().toString(),
+      serviceId: new Types.ObjectId().toString(),
+      serviceName: 'Wedding Makeup',
+      bookingDate: '2025-11-15T10:30:00Z',
+      startTime: '10:30',
+      endTime: '13:00',
+      duration: 150,
+      status: 'PENDING' as any,
+      totalPrice: 2000000,
+      servicePrice: 2000000,
+      locationType: 'mua_location' as any,
+      address: '456 Lê Lợi, Q1, TPHCM',
+      note: 'Bride prefers soft makeup',
+      orderCode: mockOrderCode,
+      createdAt: new Date('2025-10-25T08:00:00Z'),
+      updatedAt: new Date('2025-10-25T08:00:00Z')
+    };
+
+    const getSpy = redisClient.json.get as jest.Mock;
+    getSpy.mockResolvedValue(originalBookingData);
+
+    const result = await bookingService.getRedisPendingBooking(mockOrderCode);
+
+    // 1. Verify cache key format
+    expect(getSpy).toHaveBeenCalledWith('booking:pending:12345');
+    expect(getSpy).toHaveBeenCalledTimes(1);
+
+    // 2. Verify data integrity
+    expect(result).toEqual(originalBookingData);
+    expect(result?._id).toBe(originalBookingData._id);
+    expect(result?.orderCode).toBe(12345);
+    expect(result?.customerPhone).toBe('0987654321');
+
+    // 3. Verify type safety (PendingBookingResponseDTO structure)
+    expect(result).toHaveProperty('orderCode');
+    expect(result).toHaveProperty('customerPhone');
+    expect(result).toHaveProperty('customerId');
+    expect(result).toHaveProperty('artistId');
+    expect(result).toHaveProperty('serviceId');
+
+    // 4. Verify date preservation
+    expect(result?.createdAt).toEqual(originalBookingData.createdAt);
+
+    // 5. Verify all critical fields present
+    expect(result?.customerId).toBeTruthy();
+    expect(result?.artistId).toBeTruthy();
+    expect(result?.serviceId).toBeTruthy();
+    expect(result?.totalPrice).toBeGreaterThan(0);
+    expect(result?.totalPrice).toBe(2000000);
+    expect(result?.customerName).toBe('Trần Thị B');
+    expect(result?.serviceName).toBe('Wedding Makeup');
+    expect(result?.status).toBe('PENDING');
+  });
+});
+
 
