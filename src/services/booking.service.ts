@@ -143,79 +143,79 @@ async function getAvailableSlotsOfMuaByDay(muaId: string, day: string): Promise<
     });
     return validAvailableSlots;
 }
-async function getAvailableServicesOfMuaByDay(muaId: string, day: string): Promise<ServiceResponseDTO[]> {
-    // Get final slots (includes working and booking slots)
-    const weekStart = getMondayOfWeek(day, "YYYY-MM-DD"); // Monday of the week
-    const finalSlotsData = await getFinalSlots(muaId, weekStart);
-    const finalSlots = finalSlotsData.slots;
+// async function getAvailableServicesOfMuaByDay(muaId: string, day: string): Promise<ServiceResponseDTO[]> {
+//     // Get final slots (includes working and booking slots)
+//     const weekStart = getMondayOfWeek(day, "YYYY-MM-DD"); // Monday of the week
+//     const finalSlotsData = await getFinalSlots(muaId, weekStart);
+//     const finalSlots = finalSlotsData.slots;
 
-    // Filter working slots for the specific day
-    const workingTypes = [SLOT_TYPES.ORIGINAL_WORKING, SLOT_TYPES.OVERRIDE, SLOT_TYPES.NEW_WORKING, SLOT_TYPES.NEW_OVERRIDE];
-    const workingsOfDay = finalSlots.filter(slot =>
-        slot.day === fromUTC(day).format("YYYY-MM-DD") &&
-        workingTypes.includes(slot.type as any)
-    );
+//     // Filter working slots for the specific day
+//     const workingTypes = [SLOT_TYPES.ORIGINAL_WORKING, SLOT_TYPES.OVERRIDE, SLOT_TYPES.NEW_WORKING, SLOT_TYPES.NEW_OVERRIDE];
+//     const workingsOfDay = finalSlots.filter(slot =>
+//         slot.day === fromUTC(day).format("YYYY-MM-DD") &&
+//         workingTypes.includes(slot.type as any)
+//     );
 
-    // Filter booking slots for the specific day
-    const bookingsOfDay = finalSlots.filter(slot =>
-        slot.day === fromUTC(day).format("YYYY-MM-DD") &&
-        slot.type === SLOT_TYPES.BOOKING
-    );
+//     // Filter booking slots for the specific day
+//     const bookingsOfDay = finalSlots.filter(slot =>
+//         slot.day === fromUTC(day).format("YYYY-MM-DD") &&
+//         slot.type === SLOT_TYPES.BOOKING
+//     );
 
-    // Calculate available slots by removing booked time from working slots
-    let availableSlots: ISlot[] = [...workingsOfDay];
+//     // Calculate available slots by removing booked time from working slots
+//     let availableSlots: ISlot[] = [...workingsOfDay];
 
-    for (const booking of bookingsOfDay) {
-        const newAvailableSlots: ISlot[] = [];
+//     for (const booking of bookingsOfDay) {
+//         const newAvailableSlots: ISlot[] = [];
 
-        for (const workingSlot of availableSlots) {
-            const remainingSlots = subtractBookedFromWorking(workingSlot, booking);
-            newAvailableSlots.push(...remainingSlots);
-        }
+//         for (const workingSlot of availableSlots) {
+//             const remainingSlots = subtractBookedFromWorking(workingSlot, booking);
+//             newAvailableSlots.push(...remainingSlots);
+//         }
 
-        availableSlots = newAvailableSlots;
-    }
+//         availableSlots = newAvailableSlots;
+//     }
 
-    // Filter out slots with invalid time ranges (startTime >= endTime)
-    const validAvailableSlots = availableSlots.filter(slot => {
-        const start = dayjs(`${slot.day} ${slot.startTime}`, "YYYY-MM-DD HH:mm");
-        const end = dayjs(`${slot.day} ${slot.endTime}`, "YYYY-MM-DD HH:mm");
-        return start.isBefore(end);
-    });
+//     // Filter out slots with invalid time ranges (startTime >= endTime)
+//     const validAvailableSlots = availableSlots.filter(slot => {
+//         const start = dayjs(`${slot.day} ${slot.startTime}`, "YYYY-MM-DD HH:mm");
+//         const end = dayjs(`${slot.day} ${slot.endTime}`, "YYYY-MM-DD HH:mm");
+//         return start.isBefore(end);
+//     });
 
-    const services = await ServicePackage.find({ muaId: new mongoose.Types.ObjectId(muaId), isAvailable: { $ne: false } })
-        .select("_id muaId name description price duration imageUrl isAvailable createdAt updatedAt")
-        .sort({ price: 1 })
-        .lean();
+//     const services = await ServicePackage.find({ muaId: new mongoose.Types.ObjectId(muaId), isAvailable: { $ne: false } })
+//         .select("_id muaId name description price duration imageUrl isAvailable createdAt updatedAt")
+//         .sort({ price: 1 })
+//         .lean();
 
-    const validAvailableServices = services.filter(service => {
-        // Skip services without duration
-        if (!service.duration) return false;
+//     const validAvailableServices = services.filter(service => {
+//         // Skip services without duration
+//         if (!service.duration) return false;
 
-        // Check if this service's duration can fit in any available slot
-        return validAvailableSlots.some(slot => {
-            const slotStart = dayjs(`${slot.day} ${slot.startTime}`, "YYYY-MM-DD HH:mm");
-            const slotEnd = dayjs(`${slot.day} ${slot.endTime}`, "YYYY-MM-DD HH:mm");
-            const slotDurationMinutes = slotEnd.diff(slotStart, 'minute');
+//         // Check if this service's duration can fit in any available slot
+//         return validAvailableSlots.some(slot => {
+//             const slotStart = dayjs(`${slot.day} ${slot.startTime}`, "YYYY-MM-DD HH:mm");
+//             const slotEnd = dayjs(`${slot.day} ${slot.endTime}`, "YYYY-MM-DD HH:mm");
+//             const slotDurationMinutes = slotEnd.diff(slotStart, 'minute');
 
-            // Service can be performed if its duration fits within the slot
-            return service.duration! <= slotDurationMinutes;
-        });
-    });
+//             // Service can be performed if its duration fits within the slot
+//             return service.duration! <= slotDurationMinutes;
+//         });
+//     });
 
-    return validAvailableServices.map((service) => ({
-        _id: service._id.toString(),
-        muaId: service.muaId?._id.toString() || '',
-        name: service.name || '',
-        description: service.description || '',
-        price: service.price || 0,
-        duration: service.duration || 0,
-        imageUrl: service.imageUrl || '',
-        isActive: service.isAvailable !== false,
-        createdAt: service.createdAt,
-        updatedAt: service.updatedAt
-    }));
-}
+//     return validAvailableServices.map((service) => ({
+//         _id: service._id.toString(),
+//         muaId: service.muaId?._id.toString() || '',
+//         name: service.name || '',
+//         description: service.description || '',
+//         price: service.price || 0,
+//         duration: service.duration || 0,
+//         imageUrl: service.imageUrl || '',
+//         isActive: service.isAvailable !== false,
+//         createdAt: service.createdAt,
+//         updatedAt: service.updatedAt
+//     }));
+// }
 export async function getAvailableSlotsOfService(muaId: string, serviceId: string, day: string, durationMinutes: number): Promise<IBookingSlot[]> {
     // Filter out slots with invalid time ranges (startTime >= endTime)
     const validAvailableSlots = await getAvailableSlotsOfMuaByDay(muaId, day);
@@ -493,14 +493,14 @@ export async function getRedisPendingBooking(orderCode: number): Promise<Pending
         throw new Error(`Failed to get booking: ${error}`);
     }
 }
-export async function deleteRedisPendingBooking(orderCode: number): Promise<void> {
-    try {
-        const cacheKey = `booking:pending:${orderCode}`;
-        await redisClient.del(cacheKey);
-    } catch (error) {
-        throw new Error(`Failed to delete pending booking: ${error}`);
-    }
-}
+// export async function deleteRedisPendingBooking(orderCode: number): Promise<void> {
+//     try {
+//         const cacheKey = `booking:pending:${orderCode}`;
+//         await redisClient.del(cacheKey);
+//     } catch (error) {
+//         throw new Error(`Failed to delete pending booking: ${error}`);
+//     }
+// }
 // READ - Lấy booking theo ID
 export async function getBookingById(bookingId: string): Promise<BookingResponseDTO | null> {
     try {

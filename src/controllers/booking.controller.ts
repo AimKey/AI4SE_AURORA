@@ -567,35 +567,35 @@ export class BookingController {
   }
 
   // DELETE - Xóa booking hoàn toàn (hard delete)
-  async delete(req: Request, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const success = await deleteBooking(id);
+  // async delete(req: Request, res: Response): Promise<void> {
+  //   try {
+  //     const { id } = req.params;
+  //     const success = await deleteBooking(id);
 
-      if (!success) {
-        const response: ApiResponseDTO = {
-          status: 404,
-          success: false,
-          message: "Booking not found"
-        };
-        res.status(404).json(response);
-        return;
-      }
+  //     if (!success) {
+  //       const response: ApiResponseDTO = {
+  //         status: 404,
+  //         success: false,
+  //         message: "Booking not found"
+  //       };
+  //       res.status(404).json(response);
+  //       return;
+  //     }
 
-      const response: ApiResponseDTO = {
-        status: 200,
-        success: true,
-        message: "Booking deleted successfully"
-      };
+  //     const response: ApiResponseDTO = {
+  //       status: 200,
+  //       success: true,
+  //       message: "Booking deleted successfully"
+  //     };
 
-      res.status(200).json(response);
-    } catch (error) {
-      const response: ApiResponseDTO = {
-        status: 500,
-        success: false,
-        message: error instanceof Error ? error.message : "Failed to delete booking"
-      };
-      res.status(500).json(response);
-    }
-  }
+  //     res.status(200).json(response);
+  //   } catch (error) {
+  //     const response: ApiResponseDTO = {
+  //       status: 500,
+  //       success: false,
+  //       message: error instanceof Error ? error.message : "Failed to delete booking"
+  //     };
+  //     res.status(500).json(response);
+  //   }
+  // }
 }
