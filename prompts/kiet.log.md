@@ -135,18 +135,18 @@ formatBookingResponse
 ## Prompt 2: Generate Test Cases outline in testcase.md
 
 - Input Prompt
-  "Generate comprehensive unit test cases to [getBookingByCustomer].testcase.md in folder testcases for [Booking.Service.ts] 's [getBookingByCustomer]() function:
+  "Generate comprehensive unit test cases to [getAvailableSlotsOfMuaByDay].testcase.md in folder testcases for [Booking.Service.ts] 's [getAvailableSlotsOfMuaByDay]() function:
 
 Include:
 
-- Happy path scenarios - 5 test method
+- Happy path scenarios - 3 test method
 - Edge cases (boundary values) - 3 test method
 - Error scenarios - 3 test method
 - Integration with cart state - 1 test method
 
 - Input references:
   booking.service.ts
-  booking_create_crud.test.ts
+  booking_availability.test.ts
 
 1. class need test
 2. folder testcases
@@ -154,7 +154,7 @@ Include:
 ## Prompt 3: Generate Jest Test Code
 
 - Input Prompt
-  "Create Jest unit tests in file [booking_create_crud.test].ts for [BookingService]'s [getBookingByCustomer]() function with test cases in [getBookingByCustomer].testcase.md:
+  "Create Jest unit tests in file [booking_availability.test].ts for [BookingService]'s [getAvailableServicesOfMuaByDay]() function with test cases in [getAvailableServicesOfMuaByDay].testcase.md:
 
 Requirements:
 
@@ -183,7 +183,7 @@ How to structure a test file
   booking.service.ts
   createBooking.testcase.md
 - Output test file:
-  booking_create_crud.test.ts
+  booking_availability.test.ts
 
 1. class need test
 2. file testcase.md

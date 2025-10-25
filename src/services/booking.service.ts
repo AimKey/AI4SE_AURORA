@@ -1,4 +1,4 @@
-import type {ISlot } from "types/schedule.interfaces";
+import type { ISlot } from "types/schedule.interfaces";
 import { getMondayOfWeek } from "utils/calendarUtils";
 import { getFinalSlots } from "./schedule.service";
 import { fromUTC, toUTC } from "utils/timeUtils";
@@ -19,48 +19,48 @@ import { hasBookingEnded } from "constants/booking";
 
 // Helper function to check if two time slots overlap
 function slotsOverlap(slot1: ISlot, slot2: ISlot): boolean {
-  if (slot1.day !== slot2.day) return false;
-  
-  const start1 = dayjs(`${slot1.day} ${slot1.startTime}`, "YYYY-MM-DD HH:mm");
-  const end1 = dayjs(`${slot1.day} ${slot1.endTime}`, "YYYY-MM-DD HH:mm");
-  const start2 = dayjs(`${slot2.day} ${slot2.startTime}`, "YYYY-MM-DD HH:mm");
-  const end2 = dayjs(`${slot2.day} ${slot2.endTime}`, "YYYY-MM-DD HH:mm");
-  
-  return start1.isBefore(end2) && start2.isBefore(end1);
+    if (slot1.day !== slot2.day) return false;
+
+    const start1 = dayjs(`${slot1.day} ${slot1.startTime}`, "YYYY-MM-DD HH:mm");
+    const end1 = dayjs(`${slot1.day} ${slot1.endTime}`, "YYYY-MM-DD HH:mm");
+    const start2 = dayjs(`${slot2.day} ${slot2.startTime}`, "YYYY-MM-DD HH:mm");
+    const end2 = dayjs(`${slot2.day} ${slot2.endTime}`, "YYYY-MM-DD HH:mm");
+
+    return start1.isBefore(end2) && start2.isBefore(end1);
 }
 
 // Function to subtract booked time from working slots
 function subtractBookedFromWorking(workingSlot: ISlot, bookingSlot: ISlot): ISlot[] {
-  if (!slotsOverlap(workingSlot, bookingSlot)) {
-    return [workingSlot];
-  }
-  
-  const workStart = dayjs(`${workingSlot.day} ${workingSlot.startTime}`, "YYYY-MM-DD HH:mm");
-  const workEnd = dayjs(`${workingSlot.day} ${workingSlot.endTime}`, "YYYY-MM-DD HH:mm");
-  const bookStart = dayjs(`${bookingSlot.day} ${bookingSlot.startTime}`, "YYYY-MM-DD HH:mm");
-  const bookEnd = dayjs(`${bookingSlot.day} ${bookingSlot.endTime}`, "YYYY-MM-DD HH:mm");
-  
-  const result: ISlot[] = [];
-  
-  // If booking starts after working slot starts, create a slot before booking
-  if (bookStart.isAfter(workStart)) {
-    result.push({
-      ...workingSlot,
-      endTime: bookStart.format("HH:mm"),
-      slotId: `${workingSlot.slotId}_before_${bookingSlot.slotId}`
-    });
-  }
-  
-  // If booking ends before working slot ends, create a slot after booking
-  if (bookEnd.isBefore(workEnd)) {
-    result.push({
-      ...workingSlot,
-      startTime: bookEnd.format("HH:mm"),
-      slotId: `${workingSlot.slotId}_after_${bookingSlot.slotId}`
-    });
-  }
-  
-  return result;
+    if (!slotsOverlap(workingSlot, bookingSlot)) {
+        return [workingSlot];
+    }
+
+    const workStart = dayjs(`${workingSlot.day} ${workingSlot.startTime}`, "YYYY-MM-DD HH:mm");
+    const workEnd = dayjs(`${workingSlot.day} ${workingSlot.endTime}`, "YYYY-MM-DD HH:mm");
+    const bookStart = dayjs(`${bookingSlot.day} ${bookingSlot.startTime}`, "YYYY-MM-DD HH:mm");
+    const bookEnd = dayjs(`${bookingSlot.day} ${bookingSlot.endTime}`, "YYYY-MM-DD HH:mm");
+
+    const result: ISlot[] = [];
+
+    // If booking starts after working slot starts, create a slot before booking
+    if (bookStart.isAfter(workStart)) {
+        result.push({
+            ...workingSlot,
+            endTime: bookStart.format("HH:mm"),
+            slotId: `${workingSlot.slotId}_before_${bookingSlot.slotId}`
+        });
+    }
+
+    // If booking ends before working slot ends, create a slot after booking
+    if (bookEnd.isBefore(workEnd)) {
+        result.push({
+            ...workingSlot,
+            startTime: bookEnd.format("HH:mm"),
+            slotId: `${workingSlot.slotId}_after_${bookingSlot.slotId}`
+        });
+    }
+
+    return result;
 }
 
 // Function to split available slots into duration-based time slots
@@ -68,73 +68,73 @@ function splitSlotByDuration(slot: any, durationMinutes: number): IBookingSlot[]
     const result: IBookingSlot[] = [];
     const slotStart = dayjs(`${slot.day} ${slot.startTime}`, "YYYY-MM-DD HH:mm");
     const slotEnd = dayjs(`${slot.day} ${slot.endTime}`, "YYYY-MM-DD HH:mm");
-    
+
     let currentStart = slotStart;
-    
+
     while (currentStart.add(durationMinutes, 'minute').isSameOrBefore(slotEnd)) {
         const currentEnd = currentStart.add(durationMinutes, 'minute');
-        
+
         result.push({
             serviceId: '', // Will be set later
             day: slot.day,
             startTime: currentStart.format("HH:mm"),
             endTime: currentEnd.format("HH:mm")
         });
-        
+
         currentStart = currentEnd;
     }
-    
+
     return result;
 }
-async function mapToMuaResponse(ele:any):Promise<MuaResponseDTO>{
-    return{
-        _id:ele._id,
-        userId:ele.userId?._id?.toString() || '',
-        userName:ele.userId?.fullName?.toString()||'',
-        avatarUrl:ele.userId?.avatarUrl?.toString()||'',
-        experienceYears:ele.experienceYears || 0,
-        bio:ele.bio,
-        location:ele.location,
-        ratingAverage:ele.ratingAverage,
-        status:ele.status,
-        feedbackCount:ele.feedbackCount,
-        bookingCount:ele.bookingCount,
+async function mapToMuaResponse(ele: any): Promise<MuaResponseDTO> {
+    return {
+        _id: ele._id,
+        userId: ele.userId?._id?.toString() || '',
+        userName: ele.userId?.fullName?.toString() || '',
+        avatarUrl: ele.userId?.avatarUrl?.toString() || '',
+        experienceYears: ele.experienceYears || 0,
+        bio: ele.bio,
+        location: ele.location,
+        ratingAverage: ele.ratingAverage,
+        status: ele.status,
+        feedbackCount: ele.feedbackCount,
+        bookingCount: ele.bookingCount,
     }
 }
 
-async function getAvailableSlotsOfMuaByDay(muaId:string,day:string):Promise<ISlot[]>{
+async function getAvailableSlotsOfMuaByDay(muaId: string, day: string): Promise<ISlot[]> {
     // Get final slots (includes working and booking slots)
-    const weekStart = getMondayOfWeek(day,"YYYY-MM-DD"); // Monday of the week
+    const weekStart = getMondayOfWeek(day, "YYYY-MM-DD"); // Monday of the week
     const finalSlotsData = await getFinalSlots(muaId, weekStart);
     const finalSlots = finalSlotsData.slots;
-    
+
     // Filter working slots for the specific day
     const workingTypes = [SLOT_TYPES.ORIGINAL_WORKING, SLOT_TYPES.OVERRIDE, SLOT_TYPES.NEW_WORKING, SLOT_TYPES.NEW_OVERRIDE];
-    const workingsOfDay = finalSlots.filter(slot => 
-        slot.day === fromUTC(day).format("YYYY-MM-DD") && 
+    const workingsOfDay = finalSlots.filter(slot =>
+        slot.day === fromUTC(day).format("YYYY-MM-DD") &&
         workingTypes.includes(slot.type as any)
     );
-    
+
     // Filter booking slots for the specific day
-    const bookingsOfDay = finalSlots.filter(slot => 
-        slot.day === fromUTC(day).format("YYYY-MM-DD") && 
+    const bookingsOfDay = finalSlots.filter(slot =>
+        slot.day === fromUTC(day).format("YYYY-MM-DD") &&
         slot.type === SLOT_TYPES.BOOKING
     );
-    
+
     // Calculate available slots by removing booked time from working slots
     let availableSlots: ISlot[] = [...workingsOfDay];
-    
+
     for (const booking of bookingsOfDay) {
         const newAvailableSlots: ISlot[] = [];
-        
+
         for (const workingSlot of availableSlots) {
             const remainingSlots = subtractBookedFromWorking(workingSlot, booking);
             newAvailableSlots.push(...remainingSlots);
         }
-        
+
         availableSlots = newAvailableSlots;
     }
-    
+
     // Filter out slots with invalid time ranges (startTime >= endTime)
     const validAvailableSlots = availableSlots.filter(slot => {
         const start = dayjs(`${slot.day} ${slot.startTime}`, "YYYY-MM-DD HH:mm");
@@ -143,61 +143,61 @@ async function getAvailableSlotsOfMuaByDay(muaId:string,day:string):Promise<ISlo
     });
     return validAvailableSlots;
 }
-async function getAvailableServicesOfMuaByDay(muaId:string,day:string):Promise<ServiceResponseDTO[]>{
+async function getAvailableServicesOfMuaByDay(muaId: string, day: string): Promise<ServiceResponseDTO[]> {
     // Get final slots (includes working and booking slots)
-    const weekStart = getMondayOfWeek(day,"YYYY-MM-DD"); // Monday of the week
+    const weekStart = getMondayOfWeek(day, "YYYY-MM-DD"); // Monday of the week
     const finalSlotsData = await getFinalSlots(muaId, weekStart);
     const finalSlots = finalSlotsData.slots;
-    
+
     // Filter working slots for the specific day
     const workingTypes = [SLOT_TYPES.ORIGINAL_WORKING, SLOT_TYPES.OVERRIDE, SLOT_TYPES.NEW_WORKING, SLOT_TYPES.NEW_OVERRIDE];
-    const workingsOfDay = finalSlots.filter(slot => 
-        slot.day === fromUTC(day).format("YYYY-MM-DD") && 
+    const workingsOfDay = finalSlots.filter(slot =>
+        slot.day === fromUTC(day).format("YYYY-MM-DD") &&
         workingTypes.includes(slot.type as any)
     );
-    
+
     // Filter booking slots for the specific day
-    const bookingsOfDay = finalSlots.filter(slot => 
-        slot.day === fromUTC(day).format("YYYY-MM-DD") && 
+    const bookingsOfDay = finalSlots.filter(slot =>
+        slot.day === fromUTC(day).format("YYYY-MM-DD") &&
         slot.type === SLOT_TYPES.BOOKING
     );
-    
+
     // Calculate available slots by removing booked time from working slots
     let availableSlots: ISlot[] = [...workingsOfDay];
-    
+
     for (const booking of bookingsOfDay) {
         const newAvailableSlots: ISlot[] = [];
-        
+
         for (const workingSlot of availableSlots) {
             const remainingSlots = subtractBookedFromWorking(workingSlot, booking);
             newAvailableSlots.push(...remainingSlots);
         }
-        
+
         availableSlots = newAvailableSlots;
     }
-    
+
     // Filter out slots with invalid time ranges (startTime >= endTime)
     const validAvailableSlots = availableSlots.filter(slot => {
         const start = dayjs(`${slot.day} ${slot.startTime}`, "YYYY-MM-DD HH:mm");
         const end = dayjs(`${slot.day} ${slot.endTime}`, "YYYY-MM-DD HH:mm");
         return start.isBefore(end);
     });
-    
+
     const services = await ServicePackage.find({ muaId: new mongoose.Types.ObjectId(muaId), isAvailable: { $ne: false } })
-    .select("_id muaId name description price duration imageUrl isAvailable createdAt updatedAt")
-    .sort({ price: 1 })
-    .lean();
- 
+        .select("_id muaId name description price duration imageUrl isAvailable createdAt updatedAt")
+        .sort({ price: 1 })
+        .lean();
+
     const validAvailableServices = services.filter(service => {
         // Skip services without duration
         if (!service.duration) return false;
-        
+
         // Check if this service's duration can fit in any available slot
         return validAvailableSlots.some(slot => {
             const slotStart = dayjs(`${slot.day} ${slot.startTime}`, "YYYY-MM-DD HH:mm");
             const slotEnd = dayjs(`${slot.day} ${slot.endTime}`, "YYYY-MM-DD HH:mm");
             const slotDurationMinutes = slotEnd.diff(slotStart, 'minute');
-            
+
             // Service can be performed if its duration fits within the slot
             return service.duration! <= slotDurationMinutes;
         });
@@ -218,16 +218,16 @@ async function getAvailableServicesOfMuaByDay(muaId:string,day:string):Promise<S
 }
 export async function getAvailableSlotsOfService(muaId: string, serviceId: string, day: string, durationMinutes: number): Promise<IBookingSlot[]> {
     // Filter out slots with invalid time ranges (startTime >= endTime)
-    const validAvailableSlots = await getAvailableSlotsOfMuaByDay(muaId,day);
-    
+    const validAvailableSlots = await getAvailableSlotsOfMuaByDay(muaId, day);
+
     // Split each available slot into duration-based time slots
     const durationBasedSlots: IBookingSlot[] = [];
-    
+
     for (const slot of validAvailableSlots) {
         const splitSlots = splitSlotByDuration(slot, durationMinutes);
         durationBasedSlots.push(...splitSlots);
     }
-    
+
     // Set serviceId for all slots and return
     return durationBasedSlots.map(slot => ({
         ...slot,
@@ -311,19 +311,19 @@ export async function getAvailableMonthlySlots(muaId: string, day: string, durat
     return result;
 }
 
-export async function getAvailableMuaServicesByDay(day:string):Promise<IAvailableMuaServices[]>{
-    const muaIds = await MUA.find({ status: MUA_STATUS.APPROVED }).populate('userId', '_id fullName').exec();
-    const result = await Promise.all(muaIds.map(async (element:any) => {
-        const validAvailableSlots = await getAvailableServicesOfMuaByDay(element._id,day);
-        if(!validAvailableSlots.length) return null;
-        return {
-            day,
-            mua: await mapToMuaResponse(element),
-            services: validAvailableSlots
-        } as IAvailableMuaServices;
-    }));
-    return result.filter((item): item is IAvailableMuaServices => item !== null);
-}
+// export async function getAvailableMuaServicesByDay(day: string): Promise<IAvailableMuaServices[]> {
+//     const muaIds = await MUA.find({ status: MUA_STATUS.APPROVED }).populate('userId', '_id fullName').exec();
+//     const result = await Promise.all(muaIds.map(async (element: any) => {
+//         const validAvailableSlots = await getAvailableServicesOfMuaByDay(element._id, day);
+//         if (!validAvailableSlots.length) return null;
+//         return {
+//             day,
+//             mua: await mapToMuaResponse(element),
+//             services: validAvailableSlots
+//         } as IAvailableMuaServices;
+//     }));
+//     return result.filter((item): item is IAvailableMuaServices => item !== null);
+// }
 
 // ==================== OVERLAP CHECKING FUNCTIONS ====================
 
@@ -347,7 +347,7 @@ async function checkBookingConflict(
     try {
         const bookingStart = dayjs(bookingDate);
         const bookingEnd = bookingStart.add(duration, 'minute');
-        
+
         // Get the start and end of the booking day
         const dayStart = bookingStart.startOf('day').toDate();
         const dayEnd = bookingStart.endOf('day').toDate();
@@ -435,7 +435,7 @@ export async function createBooking(bookingData: CreateBookingDTO): Promise<Book
         }
         customer.phoneNumber = bookingData.customerPhone;
         await customer.save();
-        
+
         // Populate để lấy thông tin customer và service
         const populatedBooking = await Booking.findById(savedBooking._id)
             .populate("customerId serviceId")
@@ -520,14 +520,14 @@ export async function getBookingById(bookingId: string): Promise<BookingResponse
 
 // READ - Lấy tất cả bookings với phân trang
 export async function getAllBookings(
-    page: number = 1, 
+    page: number = 1,
     pageSize: number = 10,
     status?: string
 ): Promise<{ bookings: BookingResponseDTO[], total: number, page: number, totalPages: number }> {
     try {
         const skip = (page - 1) * pageSize;
         const filter: any = {};
-        
+
         if (status) {
             filter.status = status;
         }
@@ -652,7 +652,7 @@ export async function getBookingsByDate(
 
 // UPDATE - Cập nhật booking
 export async function updateBooking(
-    bookingId: string, 
+    bookingId: string,
     updateData: UpdateBookingDTO
 ): Promise<BookingResponseDTO | null> {
     try {
@@ -705,7 +705,7 @@ export async function updateBooking(
 
 // UPDATE - Cập nhật status booking
 export async function updateBookingStatus(
-    bookingId: string, 
+    bookingId: string,
     status: string
 ): Promise<BookingResponseDTO | null> {
     try {
@@ -755,7 +755,7 @@ export async function cancelBooking(bookingId: string): Promise<BookingResponseD
     try {
         const cancelledBooking = await Booking.findByIdAndUpdate(
             bookingId,
-            { 
+            {
                 status: BOOKING_STATUS.CANCELLED,
                 updatedAt: new Date()
             },
@@ -773,14 +773,14 @@ export async function cancelBooking(bookingId: string): Promise<BookingResponseD
 }
 
 // DELETE - Xóa booking hoàn toàn (hard delete)
-export async function deleteBooking(bookingId: string): Promise<boolean> {
-    try {
-        const result = await Booking.findByIdAndDelete(bookingId).exec();
-        return result !== null;
-    } catch (error) {
-        throw new Error(`Failed to delete booking: ${error}`);
-    }
-}
+// export async function deleteBooking(bookingId: string): Promise<boolean> {
+//     try {
+//         const result = await Booking.findByIdAndDelete(bookingId).exec();
+//         return result !== null;
+//     } catch (error) {
+//         throw new Error(`Failed to delete booking: ${error}`);
+//     }
+// }
 
 // UTILITY - Format booking response is implemented in `booking.formatter` and
 // imported above so tests can mock it independently.
